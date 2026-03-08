@@ -4,7 +4,7 @@ packages:
   - python-yaml
   - python-requests
 sources:
-  - https://git.sr.ht/~taum/SanshainConan
+  - https://git.sr.ht/~taum/sanshainConan
 tasks:
   - setup: |
       pip install conan

@@ -12,4 +12,4 @@ tasks:
   - build: |
       cd sanshainConan
       # This is a python_requires project, we just verify it can be "exported" or similar
-      conan export .
+      /home/build/.local/bin/conan export .

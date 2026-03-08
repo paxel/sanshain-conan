@@ -16,6 +16,6 @@ tasks:
       pip install conan
       conan profile detect --force
   - build: |
-      cd sanshainConan
+      source venv/bin/activate
       # This is a python_requires project, we just verify it can be "exported" or similar
       conan export .

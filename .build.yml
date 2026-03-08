@@ -1,0 +1,14 @@
+image: archlinux
+packages:
+  - python-pip
+  - python-yaml
+  - python-requests
+sources:
+  - https://git.sr.ht/~taum/SanshainConan
+tasks:
+  - setup: |
+      pip install conan
+  - build: |
+      cd SanshainConan
+      # This is a python_requires project, we just verify it can be "exported" or similar
+      conan export .

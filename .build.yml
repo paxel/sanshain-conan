@@ -1,21 +1,15 @@
-image: archlinux
+image: alpine/edge
 packages:
-  - gcc
+  - py3-pip
+  - build-base
   - cmake
-  - python-pip
-  - python-yaml
-  - python-requests
-  - python-conan
 sources:
   - https://git.sr.ht/~taum/sanshainConan
 tasks:
-  - setup_conan: |
-      # Create a virtual environment to avoid "externally-managed-environment" errors
-      python -m venv venv
-      source venv/bin/activate
-      pip install conan
-      conan profile detect --force
+  - setup: |
+      pip install --break-system-packages conan 
+      conan profile detect
   - build: |
-      source venv/bin/activate
+      cd sanshainConan
       # This is a python_requires project, we just verify it can be "exported" or similar
       conan export .

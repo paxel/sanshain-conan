@@ -8,7 +8,7 @@ sources:
 tasks:
   - setup: |
       pip install --break-system-packages conan 
-      conan profile detect
+      /home/build/.local/bin/conan profile detect
   - build: |
       cd sanshainConan
       # This is a python_requires project, we just verify it can be "exported" or similar

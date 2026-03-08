@@ -3,11 +3,12 @@ packages:
   - python-pip
   - python-yaml
   - python-requests
+  - python-conan
 sources:
   - https://git.sr.ht/~taum/sanshainConan
 tasks:
   - setup: |
-      pip install conan
+      # Conan is now installed via system package
   - build: |
       cd sanshainConan
       # This is a python_requires project, we just verify it can be "exported" or similar

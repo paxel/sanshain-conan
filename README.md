@@ -26,20 +26,21 @@ class MyProject(ConanFile):
 The plugin can be configured via a `sanshain.yaml` file in the project root:
 ```yaml
 sanshainUrl: "http://sanshain.example.com"
+clientName: "my-cpp-client"
 provide:
   serviceName: "my-cpp-service"
   openApiFile: "openapi.yaml"
 require:
-  - clientName: "my-cpp-client"
-    requirements:
+  - requirements:
       - serviceName: "other-service"
-        branch: "main"
         path: "/api/v1/user"
         method: "GET"
     outputDirectory: "generated/sanshain"
     timeout: 300
     retryInterval: 10
 ```
+
+The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
 
 ## Features
 -   **Automatic Branch Detection**: Automatically detects the current Git branch.

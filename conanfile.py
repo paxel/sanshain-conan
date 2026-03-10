@@ -25,10 +25,10 @@ class SanShain:
             self.conanfile.output.warning(f"Failed to detect Git branch: {e}")
             return "unknown"
 
-    def provide(self, service_name=None, branch=None, openapi_file=None):
+    def provide(self, service_name=None, openapi_file=None):
         config_provide = self.config.get("provide", {})
         service_name = service_name or config_provide.get("serviceName")
-        branch = branch or config_provide.get("branch") or self._get_git_branch()
+        branch = os.environ.get("SANSHAIN_BRANCH") or self._get_git_branch()
         openapi_file = openapi_file or config_provide.get("openApiFile")
         sanshain_url = self.config.get("sanshainUrl", "http://localhost:8080")
 
@@ -42,16 +42,14 @@ class SanShain:
     def require(self, client_name=None):
         config_require_list = self.config.get("require", [])
         require_config = None
-        if client_name:
-            require_config = next((r for r in config_require_list if r.get("clientName") == client_name), None)
-        elif len(config_require_list) == 1:
+        if len(config_require_list) == 1:
             require_config = config_require_list[0]
 
         if not require_config:
             self.conanfile.output.error(f"No requirement configuration found for client: {client_name or 'default'}")
             return
 
-        client_name = client_name or require_config.get("clientName")
+        client_name = client_name or self.config.get("clientName")
         requirements = require_config.get("requirements", [])
         output_dir = require_config.get("outputDirectory", os.path.join(self.conanfile.build_folder, "generated/sanshain"))
         timeout = require_config.get("timeout", 300)

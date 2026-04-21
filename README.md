@@ -1,10 +1,10 @@
-# SanShain Conan Plugin
+# Sanshain Conan Plugin
 
 A Conan extension to manage OpenAPI specifications during the C++ build process.
 
 ## Description
-SanShain Conan Plugin allows you to:
--   **Provide**: Upload your service's OpenAPI specification to the SanShain service.
+Sanshain Conan Plugin allows you to:
+-   **Provide**: Upload your service's OpenAPI specification to the Sanshain service.
 -   **Require**: Download OpenAPI snippets of other services to generate client code.
 
 ## Installation
@@ -16,36 +16,70 @@ class MyProject(ConanFile):
     python_requires = "sanshain-conan/0.1.0"
     
     def build(self):
-        sanshain = self.python_requires["sanshain-conan"].module.SanShain(self)
+        sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
         # require OpenAPI snippets
         sanshain.require()
         # proceed with client generation and build
 ```
 
 ## Configuration
-The plugin can be configured via a `sanshain.yaml` file in the project root:
+
+The plugin uses the standard `sanshain.yaml` file in the project root:
+
 ```yaml
-sanshainUrl: "http://sanshain.example.com"
+sanshainUrl: "https://sanshain.example.com"
 clientName: "my-cpp-client"
+
 provide:
   serviceName: "my-cpp-service"
   openApiFile: "openapi.yaml"
-require:
-  - requirements:
-      - serviceName: "other-service"
-        path: "/api/v1/user"
-        method: "GET"
+
+requires:
+  - serviceName: "other-service"
     outputDirectory: "generated/sanshain"
-    timeout: 300
-    retryInterval: 10
+    endpoints:
+      - method: GET
+        path: /api/v1/user
 ```
 
-The `branch` is automatically detected from Git or can be overridden via the `SANSHAIN_BRANCH` environment variable.
+The `branch` is automatically detected from Git or common CI environment variables. It can be overridden via `SANSHAIN_BRANCH`.
+
+## Usage
+
+### Conan Integration
+
+Add it as a `python_requires` in your `conanfile.py`:
+
+```python
+from conan import ConanFile
+
+class MyProject(ConanFile):
+    python_requires = "sanshain-conan/0.1.0"
+    
+    def generate(self):
+        sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
+        # Download required OpenAPI specs
+        sanshain.require()
+```
+
+### CLI Tool
+
+You can also use it as a standalone CLI:
+
+```bash
+# Provide (upload) spec
+python3 -m sanshainconan.cli provide
+
+# Require (download) specs
+python3 -m sanshainconan.cli require
+```
 
 ## Features
--   **Automatic Branch Detection**: Automatically detects the current Git branch.
--   **Retry Mechanism**: Waits for required OpenAPI definitions if they are not yet available.
--   **YAML Support**: Uses the same `sanshain.yaml` as the Maven plugin.
+- **Automatic Branch Detection**: Supports Git, GitHub Actions, GitLab CI, and Jenkins.
+- **Bundle Support**: Downloads merged OpenAPI specs for multiple endpoints.
+- **Bearer Token Auth**: Uses `SANSHAIN_TOKEN` environment variable.
+- **GZIP Support**: Efficiently downloads large specifications.
 
 ## License
-AGPL-3.0 - See the `LICENSE` file for more details.
+
+This project is licensed under the GNU Affero General Public License (AGPL-3.0). See the [LICENSE](LICENSE) file for details.

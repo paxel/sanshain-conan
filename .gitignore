@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+test_package/build/
+build/
+dist/
+*.egg-info/
+.conan/
+.conan2/

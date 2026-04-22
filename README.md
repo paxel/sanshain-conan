@@ -13,7 +13,7 @@ Add the repository to your `conanfile.py` using `python_requires`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/0.1.0"
+    python_requires = "sanshain-conan/1.0.0"
     
     def build(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
@@ -53,7 +53,7 @@ Add it as a `python_requires` in your `conanfile.py`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/0.1.0"
+    python_requires = "sanshain-conan/1.0.0"
     
     def generate(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)

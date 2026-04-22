@@ -1,19 +1,43 @@
 import os
 import requests
+import string
+
+def sanitize(text):
+    if not text:
+        return ""
+    if len(text) > 1000:
+        text = text[:1000] + "... (truncated)"
+    
+    printable = set(string.printable)
+    return "".join(c if c in printable else "?" for c in text)
 
 class SanshainClient:
-    def __init__(self, url, token=None):
+    def __init__(self, url, token=None, insecure=False):
         self.url = url.rstrip("/")
         self.token = token or os.environ.get("SANSHAIN_TOKEN")
         self.headers = {}
         if self.token:
             self.headers["Authorization"] = f"Bearer {self.token}"
+        self.verify = not insecure
+
+    def _handle_response(self, response):
+        if 200 <= response.status_code < 300:
+            return response
+        
+        try:
+            body = response.text
+        except Exception:
+            body = str(response.content)
+            
+        sanitized_body = sanitize(body)
+        raise Exception(f"Request failed with status {response.status_code}: {sanitized_body}")
 
     def provide(self, service_name, branch, openapi_yaml):
         payload = {
             "servicename": service_name,
             "branch": branch,
-            "openapi_yaml": openapi_yaml
+            "openapi_yaml": openapi_yaml,
+            "api_type": "openapi"
         }
         return self._post("/provide", payload)
 
@@ -21,7 +45,8 @@ class SanshainClient:
         payload = {
             "servicename": service_name,
             "branch": branch,
-            "asyncapi_yaml": asyncapi_yaml
+            "asyncapi_yaml": asyncapi_yaml,
+            "api_type": "asyncapi"
         }
         return self._post("/provide/asyncapi", payload)
 
@@ -29,14 +54,18 @@ class SanshainClient:
         payload = {
             "servicename": service_name,
             "branch": branch,
-            "proto_content": proto_content
+            "proto_content": proto_content,
+            "api_type": "proto"
         }
         return self._post("/provide/grpc", payload)
 
     def _post(self, path, payload):
-        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
+        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify)
+        self._handle_response(response)
+        try:
+            return response.json()
+        except ValueError:
+            return response.text
 
     def require_bundle(self, client_name, service_name, branch, endpoints, timeout=30, api_type=None):
         payload = {
@@ -44,14 +73,13 @@ class SanshainClient:
             "servicename": service_name,
             "branch": branch,
             "endpoints": endpoints,
-            "timeout": timeout
+            "timeout": timeout,
+            "api_type": api_type or "openapi"
         }
-        if api_type:
-            payload["api_type"] = api_type
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
-        response = requests.post(f"{self.url}/require-bundle", json=payload, headers=headers)
-        response.raise_for_status()
+        response = requests.post(f"{self.url}/require-bundle", json=payload, headers=headers, verify=self.verify)
+        self._handle_response(response)
         return response.text
 
     def require(self, client_name, service_name, branch, path, method, timeout=30, api_type=None):
@@ -61,7 +89,8 @@ class SanshainClient:
             "branch": branch,
             "path": path,
             "method": method,
-            "timeout": timeout
+            "timeout": timeout,
+            "api_type": api_type or "openapi"
         }
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
@@ -71,6 +100,6 @@ class SanshainClient:
         elif api_type == "proto":
             url = f"{self.url}/require/grpc"
 
-        response = requests.get(url, params=params, headers=headers)
-        response.raise_for_status()
+        response = requests.get(url, params=params, headers=headers, verify=self.verify)
+        self._handle_response(response)
         return response.text

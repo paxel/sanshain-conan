@@ -8,6 +8,7 @@ from .client import SanshainClient
 def main():
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
+    parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
     
     subparsers = parser.add_subparsers(dest="command")
     
@@ -22,7 +23,7 @@ def main():
         
     try:
         config = load_config(args.config)
-        client = SanshainClient(config.sanshain_url)
+        client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         branch = get_branch()
         
         if args.command == "provide":

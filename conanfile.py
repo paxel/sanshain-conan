@@ -26,25 +26,59 @@ class Sanshain:
         self.branch = get_branch()
 
     def provide(self):
-        if not self.config.provide:
+        provides = []
+        if self.config.provide:
+            provides.append(self.config.provide)
+        provides.extend(self.config.provides)
+
+        if not provides:
             self.conanfile.output.info("Sanshain: No 'provide' configuration found")
             return
 
-        service_name = self.config.provide["serviceName"]
-        openapi_file = self.config.provide["openApiFile"]
+        provided = False
         base_path = self.conanfile.recipe_folder or self.conanfile.base_folder
-        openapi_path = os.path.join(base_path, openapi_file)
-        
-        if not os.path.exists(openapi_path):
-            self.conanfile.output.error(f"Sanshain: OpenAPI file not found at {openapi_path}")
-            return
 
-        with open(openapi_path, "r") as f:
-            content = f.read()
+        def do_provide(p, branch, file_path, api_type):
+            full_path = os.path.join(base_path, file_path)
+            if not os.path.exists(full_path):
+                self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
+                if not self.config.best_effort:
+                    raise Exception(f"File not found: {full_path}")
+                return False
+
+            with open(full_path, "r") as f:
+                content = f.read()
             
-        branch = self.config.provide.get("branch") or self.branch
-        self.conanfile.output.info(f"Sanshain: Providing {service_name} (branch: {branch})")
-        self.client.provide(service_name, branch, content)
+            effective_type = api_type or "openapi"
+            self.conanfile.output.info(f"Sanshain: Providing {effective_type} {self.config.service_name} (branch: {branch})")
+            
+            if effective_type == "openapi":
+                self.client.provide(self.config.service_name, branch, content)
+            elif effective_type == "asyncapi":
+                self.client.provide_asyncapi(self.config.service_name, branch, content)
+            elif effective_type == "proto" or effective_type == "grpc":
+                self.client.provide_proto(self.config.service_name, branch, content)
+            return True
+
+        for p in provides:
+            branch = p.get("branch") or self.branch
+            if "file" in p:
+                if do_provide(p, branch, p["file"], p.get("apiType")):
+                    provided = True
+            
+            # Backward compatibility
+            if "openApiFile" in p:
+                if do_provide(p, branch, p["openApiFile"], "openapi"):
+                    provided = True
+            if "asyncApiFile" in p:
+                if do_provide(p, branch, p["asyncApiFile"], "asyncapi"):
+                    provided = True
+            if "protoFile" in p:
+                if do_provide(p, branch, p["protoFile"], "proto"):
+                    provided = True
+
+        if provided:
+            self.conanfile.output.info("Sanshain: Successfully provided spec(s)")
 
     def require(self):
         for req in self.config.requires:
@@ -53,26 +87,35 @@ class Sanshain:
             endpoints = req["endpoints"]
             branch = req.get("branch") or self.branch
             timeout = req.get("timeout") or self.config.timeout
+            api_type = req.get("apiType")
             
             # Resolve output_dir relative to project root
             base_output = os.path.join(self.conanfile.export_sources_folder or self.conanfile.base_folder, output_dir)
             os.makedirs(base_output, exist_ok=True)
             
-            self.conanfile.output.info(f"Sanshain: Requiring {len(endpoints)} endpoints from {service_name} (branch: {branch})")
+            self.conanfile.output.info(f"Sanshain: Requiring {len(endpoints)} endpoints from {service_name} (branch: {branch}, type: {api_type or 'openapi'})")
             
-            if len(endpoints) > 1:
-                content = self.client.require_bundle(self.config.client_name, service_name, branch, endpoints, timeout)
-            else:
-                ep = endpoints[0]
-                content = self.client.require(self.config.client_name, service_name, branch, ep["path"], ep["method"], timeout)
-                
-            output_file = os.path.join(base_output, "openapi.yaml")
-            with open(output_file, "w") as f:
-                f.write(content)
+            try:
+                if len(endpoints) > 1:
+                    content = self.client.require_bundle(self.config.service_name, service_name, branch, endpoints, timeout, api_type)
+                else:
+                    ep = endpoints[0]
+                    content = self.client.require(self.config.service_name, service_name, branch, ep["path"], ep["method"], timeout, api_type)
+                    
+                ext = "proto" if api_type == "proto" else "yaml"
+                output_file = os.path.join(base_output, f"{service_name}.{ext}")
+                with open(output_file, "w") as f:
+                    f.write(content)
+                self.conanfile.output.info(f"Sanshain: Saved to {output_file}")
+            except Exception as e:
+                self.conanfile.output.error(f"Sanshain: Error requiring {service_name}: {e}")
+                if not self.config.best_effort:
+                    raise
+                self.conanfile.output.warn("Sanshain: Continuing (best effort)")
 
 class SanshainConan(ConanFile):
     name = "sanshain-conan"
-    version = "0.1.0"
+    version = "1.0.0"
     license = "AGPL-3.0"
     author = "Junie"
     url = "https://github.com/sanshain/sanshain-conan"

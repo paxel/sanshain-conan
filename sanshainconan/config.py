@@ -7,11 +7,14 @@ class ConfigError(Exception):
 class SanshainConfig:
     def __init__(self, data):
         self.sanshain_url = data.get("sanshainUrl")
-        self.client_name = data.get("clientName")
+        self.service_name = data.get("serviceName", data.get("clientName"))
+        self.client_name = self.service_name # alias
         self.timeout = data.get("timeout", 30)
         self.compression = data.get("compression", False)
+        self.best_effort = data.get("bestEffort", False)
         
         self.provide = data.get("provide")
+        self.provides = data.get("provides", [])
         self.requires = data.get("requires", [])
         
         self._validate()
@@ -19,14 +22,18 @@ class SanshainConfig:
     def _validate(self):
         if not self.sanshain_url:
             raise ConfigError("Missing required field: sanshainUrl")
-        if not self.client_name:
-            raise ConfigError("Missing required field: clientName")
+        if not self.service_name:
+            raise ConfigError("Missing required field: serviceName")
             
+        def validate_provide(p, context):
+            if not any(k in p for k in ["file", "openApiFile", "asyncApiFile", "protoFile"]):
+                raise ConfigError(f"At least one of file, openApiFile, asyncApiFile, or protoFile must be specified in {context}")
+
         if self.provide:
-            if "serviceName" not in self.provide:
-                raise ConfigError("Missing required field in provide: serviceName")
-            if "openApiFile" not in self.provide:
-                raise ConfigError("Missing required field in provide: openApiFile")
+            validate_provide(self.provide, "provide")
+        
+        for i, p in enumerate(self.provides):
+            validate_provide(p, f"provides[{i}]")
         
         for req in self.requires:
             if "serviceName" not in req:

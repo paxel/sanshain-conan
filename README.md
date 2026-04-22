@@ -28,11 +28,10 @@ The plugin uses the standard `sanshain.yaml` file in the project root:
 
 ```yaml
 sanshainUrl: "https://sanshain.example.com"
-clientName: "my-cpp-client"
+serviceName: "my-cpp-service"
 
-provide:
-  serviceName: "my-cpp-service"
-  openApiFile: "openapi.yaml"
+provides:
+  - file: "openapi.yaml"
 
 requires:
   - serviceName: "other-service"

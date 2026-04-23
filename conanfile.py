@@ -115,7 +115,7 @@ class Sanshain:
 
 class SanshainConan(ConanFile):
     name = "sanshain-conan"
-    version = "1.1.0"
+    version = "1.2.0"
     license = "AGPL-3.0"
     author = "Junie"
     url = "https://github.com/sanshain/sanshain-conan"

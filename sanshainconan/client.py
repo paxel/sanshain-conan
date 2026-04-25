@@ -30,34 +30,52 @@ class SanshainClient:
             body = str(response.content)
             
         sanitized_body = sanitize(body)
+
+        if response.status_code == 409:
+            raise Exception("Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.")
+
         raise Exception(f"Request failed with status {response.status_code}: {sanitized_body}")
 
-    def provide(self, service_name, branch, openapi_yaml):
+    def provide(self, service_name, branch, openapi_yaml, base_version=None):
         payload = {
             "servicename": service_name,
             "branch": branch,
             "openapi_yaml": openapi_yaml,
             "api_type": "openapi"
         }
-        return self._post("/provide", payload)
+        if base_version is not None:
+            payload["base_version"] = base_version
+        return self._post_provide("/provide", payload)
 
-    def provide_asyncapi(self, service_name, branch, asyncapi_yaml):
+    def provide_asyncapi(self, service_name, branch, asyncapi_yaml, base_version=None):
         payload = {
             "servicename": service_name,
             "branch": branch,
             "asyncapi_yaml": asyncapi_yaml,
             "api_type": "asyncapi"
         }
-        return self._post("/provide/asyncapi", payload)
+        if base_version is not None:
+            payload["base_version"] = base_version
+        return self._post_provide("/provide/asyncapi", payload)
 
-    def provide_proto(self, service_name, branch, proto_content):
+    def provide_proto(self, service_name, branch, proto_content, base_version=None):
         payload = {
             "servicename": service_name,
             "branch": branch,
             "proto_content": proto_content,
             "api_type": "proto"
         }
-        return self._post("/provide/grpc", payload)
+        if base_version is not None:
+            payload["base_version"] = base_version
+        return self._post_provide("/provide/grpc", payload)
+
+    def _post_provide(self, path, payload):
+        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify)
+        self._handle_response(response)
+        try:
+            return response.json()
+        except ValueError:
+            return None
 
     def _post(self, path, payload):
         response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify)
@@ -67,7 +85,7 @@ class SanshainClient:
         except ValueError:
             return response.text
 
-    def require_bundle(self, client_name, service_name, branch, endpoints, timeout=30, api_type=None):
+    def require_bundle(self, client_name, service_name, branch, endpoints, timeout=30, api_type=None, etag=None):
         payload = {
             "clientname": client_name,
             "servicename": service_name,
@@ -78,11 +96,16 @@ class SanshainClient:
         }
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
+        if etag:
+            headers["If-None-Match"] = etag
         response = requests.post(f"{self.url}/require-bundle", json=payload, headers=headers, verify=self.verify)
+        if response.status_code == 304:
+            return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response)
-        return response.text
+        response_etag = response.headers.get("ETag")
+        return {"not_modified": False, "content": response.text, "etag": response_etag}
 
-    def require(self, client_name, service_name, branch, path, method, timeout=30, api_type=None):
+    def require(self, client_name, service_name, branch, path, method, timeout=30, api_type=None, etag=None):
         params = {
             "clientname": client_name,
             "servicename": service_name,
@@ -94,6 +117,8 @@ class SanshainClient:
         }
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
+        if etag:
+            headers["If-None-Match"] = etag
         url = f"{self.url}/require"
         if api_type == "asyncapi":
             url = f"{self.url}/require/asyncapi"
@@ -101,5 +126,8 @@ class SanshainClient:
             url = f"{self.url}/require/grpc"
 
         response = requests.get(url, params=params, headers=headers, verify=self.verify)
+        if response.status_code == 304:
+            return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response)
-        return response.text
+        response_etag = response.headers.get("ETag")
+        return {"not_modified": False, "content": response.text, "etag": response_etag}

@@ -20,7 +20,7 @@ To use the plugin, declare it in `python_requires` and call the `Sanshain` helpe
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/0.1.0"
+    python_requires = "sanshain-conan/1.3.0"
     
     def generate(self):
         # Initialize the helper

@@ -13,11 +13,11 @@ Add the repository to your `conanfile.py` using `python_requires`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/1.0.0"
+    python_requires = "sanshain-conan/1.3.0"
     
-    def build(self):
+    def generate(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
-        # require OpenAPI snippets
+        # Download required OpenAPI specs (runs during `conan install`)
         sanshain.require()
         # proceed with client generation and build
 ```
@@ -53,25 +53,43 @@ Add it as a `python_requires` in your `conanfile.py`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/1.0.0"
+    python_requires = "sanshain-conan/1.3.0"
     
     def generate(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
-        # Download required OpenAPI specs
+        # Download required OpenAPI specs (runs during `conan install`)
         sanshain.require()
 ```
 
+> **Why `generate()` and not `build()`?**
+>
+> Conan [best practice](https://docs.conan.io/2/knowledge/guidelines.html) recommends keeping
+> `build()` simple — it should only compile. The `generate()` method runs during `conan install`
+> and is designed to prepare all build inputs (toolchain files, downloaded specs, generated code).
+> Placing `require()` in `generate()` means developers can run `conan install .` followed by a
+> native build (e.g., `cmake --build .`) without needing Conan during the actual compilation step.
+>
+> **Why is `provide()` not in a Conan lifecycle method?**
+>
+> Uploading your API spec to Sanshain is a **publish** action with side effects — it should only
+> happen once after tests pass, typically as a CI step. Use the CLI:
+
 ### CLI Tool
 
-You can also use it as a standalone CLI:
-
 ```bash
-# Provide (upload) spec
+# Provide (upload) spec — run in CI after tests pass
 python3 -m sanshainconan.cli provide
 
-# Require (download) specs
+# Require (download) specs — alternative to generate() integration
 python3 -m sanshainconan.cli require
 ```
+
+## v0.13.0 Features
+
+- **Optimistic Concurrency Control**: Add `baseVersion` to your provide config for conflict detection.
+- **Provide Response**: Logs a summary after each provide (e.g., `✓ Provided to Sanshain v5: 2 new, 1 updated, 0 deleted endpoints`).
+- **Client-Side Content Caching**: Skips provide if spec file SHA-256 hash is unchanged.
+- **Require-Side ETag Caching**: Sends `If-None-Match` on subsequent requires, skips file writes on `304 Not Modified`.
 
 ## Features
 - **Automatic Branch Detection**: Supports Git, GitHub Actions, GitLab CI, and Jenkins.

@@ -29,10 +29,10 @@ def test_load_config_valid(tmp_path):
 
 def test_load_config_missing_required(tmp_path):
     config_file = tmp_path / "sanshain.yaml"
-    data = {"sanshainUrl": "http://localhost:8080"} # missing serviceName
+    data = {} # missing sanshainUrl
     config_file.write_text(yaml.dump(data))
     
-    with pytest.raises(ConfigError, match="Missing required field: serviceName"):
+    with pytest.raises(ConfigError, match="Missing required field: sanshainUrl"):
         load_config(str(config_file))
 
 def test_load_config_not_found():

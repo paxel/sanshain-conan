@@ -25,7 +25,7 @@ def test_require_bundle(mock_post):
     endpoints = [{"path": "/foo", "method": "GET"}]
     res = client.require_bundle("client", "service", "main", endpoints)
     
-    assert "paths: /foo" in res
+    assert "paths: /foo" in res["content"]
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
     assert kwargs["json"]["endpoints"] == endpoints
@@ -38,7 +38,7 @@ def test_require_single(mock_get):
     client = SanshainClient("http://localhost:8080")
     res = client.require("client", "service", "main", "/bar", "GET")
     
-    assert "paths: /bar" in res
+    assert "paths: /bar" in res["content"]
     mock_get.assert_called_once()
     args, kwargs = mock_get.call_args
     assert kwargs["params"]["path"] == "/bar"

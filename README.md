@@ -86,10 +86,82 @@ python3 -m sanshainconan.cli require
 
 ## v0.13.0 Features
 
-- **Optimistic Concurrency Control**: Add `baseVersion` to your provide config for conflict detection.
-- **Provide Response**: Logs a summary after each provide (e.g., `✓ Provided to Sanshain v5: 2 new, 1 updated, 0 deleted endpoints`).
-- **Client-Side Content Caching**: Skips provide if spec file SHA-256 hash is unchanged.
-- **Require-Side ETag Caching**: Sends `If-None-Match` on subsequent requires, skips file writes on `304 Not Modified`.
+### Optimistic Concurrency Control (`baseVersion`)
+
+Add `baseVersion` to your provide configuration to detect concurrent modifications:
+
+```yaml
+provides:
+  - file: openapi.yaml
+    baseVersion: 5
+```
+
+If the server version has advanced beyond your `baseVersion`, the provide call fails with:
+
+> Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.
+
+The CLI automatically tracks the last known version in a local cache, so after the first successful provide, subsequent runs send the correct `base_version` automatically.
+
+### Provide Response Summary
+
+After each successful provide, the CLI logs a human-readable summary:
+
+```
+✓ Provided to Sanshain v5: 2 new, 1 updated, 0 deleted endpoints
+```
+
+### Client-Side Content Caching (Skip-if-unchanged)
+
+Before uploading, the CLI computes the SHA-256 hash of the spec file and compares it with the cached hash from the last provide. If unchanged:
+
+```
+⏭ Spec unchanged (hash match), skipping provide.
+```
+
+### Require-Side ETag Caching
+
+The CLI stores the `ETag` from require responses and sends `If-None-Match` on subsequent runs. On `304 Not Modified`:
+
+```
+⏭ user-service spec unchanged (304), skipping code generation.
+```
+
+### State File
+
+The local cache is stored at `.sanshain-cache.json` in the current working directory. The format is:
+
+```json
+{
+  "provides": {
+    "openapi.yaml": {
+      "content_hash": "sha256:abc123...",
+      "version": 5,
+      "last_provided": "2026-04-25T12:00:00Z"
+    }
+  },
+  "requires": {
+    "user-service|main|GET|/api/v1/users": {
+      "etag": "\"sha256:def456...\"",
+      "last_fetched": "2026-04-25T12:00:00Z"
+    }
+  }
+}
+```
+
+## Strict Mode
+
+By default, the CLI warns and skips when configuration is incomplete (no `serviceName`, no `provides`, no `requires`). This makes it safe to run both commands even if only one applies.
+
+To fail on missing configuration, enable strict mode in `sanshain.yaml`:
+
+```yaml
+strict: true
+```
+
+When strict mode is enabled:
+- Missing `serviceName` → exit with error
+- No `provides` configured → exit with error
+- No `requires` configured → exit with error
 
 ## Features
 - **Automatic Branch Detection**: Supports Git, GitHub Actions, GitLab CI, and Jenkins.

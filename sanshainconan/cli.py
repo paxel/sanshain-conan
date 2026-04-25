@@ -27,17 +27,26 @@ def main():
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         branch = get_branch()
         cache = SanshainCache()
+        strict = config.strict
         
         if args.command == "provide":
+            if not config.service_name:
+                if strict:
+                    print("serviceName is required (in sanshain.yaml or via environment)")
+                    sys.exit(1)
+                print("\u26a0 No serviceName configured. Skipping provide. Set strict: true to fail in this case.")
+                return
+
             provides = []
             if config.provide:
                 provides.append(config.provide)
             provides.extend(config.provides)
 
             if not provides:
-                print("No 'provide' section in config")
-                if not config.best_effort:
+                if strict:
+                    print("No 'provide' section in config")
                     sys.exit(1)
+                print("\u26a0 No provide configuration found in sanshain.yaml. Skipping. Set strict: true to fail in this case.")
                 return
             
             config_dir = os.path.dirname(os.path.abspath(args.config))
@@ -110,11 +119,28 @@ def main():
                         provided = True
 
             if not provided:
-                print("No specification files found to provide.")
+                if strict:
+                    print("No specification files found to provide.")
+                    sys.exit(1)
+                print("\u26a0 No specification files found to provide. Skipping. Set strict: true to fail in this case.")
             else:
                 print("Successfully provided.")
             
         elif args.command == "require":
+            if not config.service_name:
+                if strict:
+                    print("serviceName is required (in sanshain.yaml or via environment)")
+                    sys.exit(1)
+                print("\u26a0 No serviceName configured. Skipping require. Set strict: true to fail in this case.")
+                return
+
+            if not config.requires:
+                if strict:
+                    print("No requires configured in sanshain.yaml")
+                    sys.exit(1)
+                print("\u26a0 No requires configured in sanshain.yaml. Skipping. Set strict: true to fail in this case.")
+                return
+
             for req in config.requires:
                 service_name = req["serviceName"]
                 output_dir = req["outputDirectory"]

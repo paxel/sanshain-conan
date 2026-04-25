@@ -12,6 +12,7 @@ class SanshainConfig:
         self.timeout = data.get("timeout", 30)
         self.compression = data.get("compression", False)
         self.best_effort = data.get("bestEffort", False)
+        self.strict = data.get("strict", False)
         
         self.provide = data.get("provide")
         self.provides = data.get("provides", [])
@@ -22,8 +23,6 @@ class SanshainConfig:
     def _validate(self):
         if not self.sanshain_url:
             raise ConfigError("Missing required field: sanshainUrl")
-        if not self.service_name:
-            raise ConfigError("Missing required field: serviceName")
             
         def validate_provide(p, context):
             if not any(k in p for k in ["file", "openApiFile", "asyncApiFile", "protoFile"]):

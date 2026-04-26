@@ -18,7 +18,11 @@ class SanshainCache:
             if os.path.exists(self.cache_file):
                 with open(self.cache_file, "r") as f:
                     return json.load(f)
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        except Exception:  # nosec B110
+            # Other errors should also result in an empty state but maybe we want to log them?
+            # For now keep it quiet as it was before, but avoid bare except
             pass
         return {"provides": {}, "requires": {}}
 

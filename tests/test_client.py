@@ -9,7 +9,7 @@ class TestSanshainClient(unittest.TestCase):
         mock_post.return_value.json.return_value = {"status": "ok"}
         mock_post.return_value.status_code = 200
 
-        client = SanshainClient("http://localhost:8080", token="test-token")
+        client = SanshainClient("http://localhost:8080", token="test-token")  # nosec B106
         res = client.provide("my-service", "main", "openapi: 3.0.0")
 
         self.assertEqual(res, {"status": "ok"})

@@ -1,5 +1,5 @@
 import os
-import subprocess
+import subprocess  # nosec B404
 
 
 def get_branch():
@@ -15,7 +15,7 @@ def get_branch():
 
     # 3. Try git command
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True
         )
         branch = result.stdout.strip()
@@ -26,7 +26,9 @@ def get_branch():
             resolved = _resolve_branch_from_detached_head()
             if resolved:
                 return resolved
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
+        pass
+    except Exception:  # nosec B110
         pass
 
     # 4. Fallback
@@ -83,7 +85,7 @@ def _detect_branch_from_ci():
 
 def _resolve_branch_from_detached_head():
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             ["git", "branch", "-a", "--contains", "HEAD"], capture_output=True, text=True, check=True
         )
         for raw_line in result.stdout.split("\n"):
@@ -98,6 +100,8 @@ def _resolve_branch_from_detached_head():
                     return candidate
                 continue
             return line
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
+        pass
+    except Exception:  # nosec B110
         pass
     return None

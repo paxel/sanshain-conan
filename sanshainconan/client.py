@@ -65,7 +65,7 @@ class SanshainClient:
         return self._post_provide("/provide/grpc", payload)
 
     def _post_provide(self, path, payload):
-        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify)
+        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30)
         self._handle_response(response)
         try:
             return response.json()
@@ -73,7 +73,7 @@ class SanshainClient:
             return None
 
     def _post(self, path, payload):
-        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify)
+        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30)
         self._handle_response(response)
         try:
             return response.json()
@@ -93,7 +93,9 @@ class SanshainClient:
         headers["Accept-Encoding"] = "gzip"
         if etag:
             headers["If-None-Match"] = etag
-        response = requests.post(f"{self.url}/require-bundle", json=payload, headers=headers, verify=self.verify)
+        response = requests.post(
+            f"{self.url}/require-bundle", json=payload, headers=headers, verify=self.verify, timeout=timeout
+        )
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response)
@@ -120,7 +122,7 @@ class SanshainClient:
         elif api_type == "proto":
             url = f"{self.url}/require/grpc"
 
-        response = requests.get(url, params=params, headers=headers, verify=self.verify)
+        response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=timeout)
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response)

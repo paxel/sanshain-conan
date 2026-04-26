@@ -65,7 +65,9 @@ class SanshainClient:
         return self._post_provide("/provide/grpc", payload)
 
     def _post_provide(self, path, payload):
-        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30)
+        response = requests.post(
+            f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30
+        )
         self._handle_response(response)
         try:
             return response.json()
@@ -73,7 +75,9 @@ class SanshainClient:
             return None
 
     def _post(self, path, payload):
-        response = requests.post(f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30)
+        response = requests.post(
+            f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=30
+        )
         self._handle_response(response)
         try:
             return response.json()

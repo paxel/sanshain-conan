@@ -126,7 +126,7 @@ class Sanshain:
 
 class SanshainConan(ConanFile):
     name = "sanshain-conan"
-    version = "1.3.0"
+    version = "1.4.0"
     license = "Apache-2.0"
     author = "Junie"
     url = "https://github.com/sanshain/sanshain-conan"

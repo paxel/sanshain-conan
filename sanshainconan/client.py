@@ -2,14 +2,16 @@ import os
 import requests
 import string
 
+
 def sanitize(text):
     if not text:
         return ""
     if len(text) > 1000:
         text = text[:1000] + "... (truncated)"
-    
+
     printable = set(string.printable)
     return "".join(c if c in printable else "?" for c in text)
+
 
 class SanshainClient:
     def __init__(self, url, token=None, insecure=False):
@@ -23,26 +25,23 @@ class SanshainClient:
     def _handle_response(self, response):
         if 200 <= response.status_code < 300:
             return response
-        
+
         try:
             body = response.text
         except Exception:
             body = str(response.content)
-            
+
         sanitized_body = sanitize(body)
 
         if response.status_code == 409:
-            raise Exception("Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.")
+            raise Exception(
+                "Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state."
+            )
 
         raise Exception(f"Request failed with status {response.status_code}: {sanitized_body}")
 
     def provide(self, service_name, branch, openapi_yaml, base_version=None):
-        payload = {
-            "servicename": service_name,
-            "branch": branch,
-            "openapi_yaml": openapi_yaml,
-            "api_type": "openapi"
-        }
+        payload = {"servicename": service_name, "branch": branch, "openapi_yaml": openapi_yaml, "api_type": "openapi"}
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide", payload)
@@ -52,19 +51,14 @@ class SanshainClient:
             "servicename": service_name,
             "branch": branch,
             "asyncapi_yaml": asyncapi_yaml,
-            "api_type": "asyncapi"
+            "api_type": "asyncapi",
         }
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide/asyncapi", payload)
 
     def provide_proto(self, service_name, branch, proto_content, base_version=None):
-        payload = {
-            "servicename": service_name,
-            "branch": branch,
-            "proto_content": proto_content,
-            "api_type": "proto"
-        }
+        payload = {"servicename": service_name, "branch": branch, "proto_content": proto_content, "api_type": "proto"}
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide/grpc", payload)
@@ -92,7 +86,7 @@ class SanshainClient:
             "branch": branch,
             "endpoints": endpoints,
             "timeout": timeout,
-            "api_type": api_type or "openapi"
+            "api_type": api_type or "openapi",
         }
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
@@ -113,7 +107,7 @@ class SanshainClient:
             "path": path,
             "method": method,
             "timeout": timeout,
-            "api_type": api_type or "openapi"
+            "api_type": api_type or "openapi",
         }
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"

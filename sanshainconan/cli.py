@@ -6,29 +6,30 @@ from .git import get_branch
 from .client import SanshainClient
 from .cache import SanshainCache
 
+
 def main():
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
-    
+
     subparsers = parser.add_subparsers(dest="command")
-    
+
     subparsers.add_parser("provide", help="Upload local spec to Sanshain")
     subparsers.add_parser("require", help="Download required specs from Sanshain")
-    
+
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         sys.exit(1)
-        
+
     try:
         config = load_config(args.config)
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         branch = get_branch()
         cache = SanshainCache()
         strict = config.strict
-        
+
         if args.command == "provide":
             if not config.service_name:
                 if strict:
@@ -46,9 +47,11 @@ def main():
                 if strict:
                     print("No 'provide' section in config")
                     sys.exit(1)
-                print("\u26a0 No provide configuration found in sanshain.yaml. Skipping. Set strict: true to fail in this case.")
+                print(
+                    "\u26a0 No provide configuration found in sanshain.yaml. Skipping. Set strict: true to fail in this case."
+                )
                 return
-            
+
             config_dir = os.path.dirname(os.path.abspath(args.config))
             provided = False
 
@@ -88,7 +91,9 @@ def main():
                         inserts = changes.get("inserts", 0)
                         updates = changes.get("updates", 0)
                         deletes = changes.get("deletes", 0)
-                        print(f"\u2713 Provided to Sanshain v{version}: {inserts} new, {updates} updated, {deletes} deleted endpoints")
+                        print(
+                            f"\u2713 Provided to Sanshain v{version}: {inserts} new, {updates} updated, {deletes} deleted endpoints"
+                        )
                         response_hash = response.get("content_hash", content_hash)
                         cache.update_provide_entry(file_key, response_hash, version)
                         cache.save()
@@ -106,7 +111,7 @@ def main():
                 if "file" in p:
                     if do_provide_file(p, p_branch, p["file"], p.get("apiType"), p_base_version):
                         provided = True
-                
+
                 # Backward compatibility
                 if "openApiFile" in p:
                     if do_provide_file(p, p_branch, p["openApiFile"], "openapi", p_base_version):
@@ -122,10 +127,12 @@ def main():
                 if strict:
                     print("No specification files found to provide.")
                     sys.exit(1)
-                print("\u26a0 No specification files found to provide. Skipping. Set strict: true to fail in this case.")
+                print(
+                    "\u26a0 No specification files found to provide. Skipping. Set strict: true to fail in this case."
+                )
             else:
                 print("Successfully provided.")
-            
+
         elif args.command == "require":
             if not config.service_name:
                 if strict:
@@ -138,7 +145,9 @@ def main():
                 if strict:
                     print("No requires configured in sanshain.yaml")
                     sys.exit(1)
-                print("\u26a0 No requires configured in sanshain.yaml. Skipping. Set strict: true to fail in this case.")
+                print(
+                    "\u26a0 No requires configured in sanshain.yaml. Skipping. Set strict: true to fail in this case."
+                )
                 return
 
             for req in config.requires:
@@ -148,28 +157,41 @@ def main():
                 req_branch = req.get("branch") or branch
                 timeout = req.get("timeout") or config.timeout
                 api_type = req.get("apiType")
-                
+
                 # Resolve relative to config file location
                 config_dir = os.path.dirname(os.path.abspath(args.config))
                 output_path = os.path.join(config_dir, output_dir)
-                
-                print(f"Requiring {len(endpoints)} endpoints from {service_name} (branch: {req_branch}, type: {api_type or 'openapi'})...")
+
+                print(
+                    f"Requiring {len(endpoints)} endpoints from {service_name} (branch: {req_branch}, type: {api_type or 'openapi'})..."
+                )
                 os.makedirs(output_path, exist_ok=True)
-                
+
                 try:
                     if len(endpoints) > 1:
                         cache_key = SanshainCache.require_bundle_key(service_name, req_branch)
                         cached_entry = cache.get_require_entry(cache_key)
                         cached_etag = cached_entry.get("etag") if cached_entry else None
 
-                        result = client.require_bundle(config.service_name, service_name, req_branch, endpoints, timeout, api_type, cached_etag)
+                        result = client.require_bundle(
+                            config.service_name, service_name, req_branch, endpoints, timeout, api_type, cached_etag
+                        )
                     else:
                         ep = endpoints[0]
                         cache_key = SanshainCache.require_key(service_name, req_branch, ep["method"], ep["path"])
                         cached_entry = cache.get_require_entry(cache_key)
                         cached_etag = cached_entry.get("etag") if cached_entry else None
 
-                        result = client.require(config.service_name, service_name, req_branch, ep["path"], ep["method"], timeout, api_type, cached_etag)
+                        result = client.require(
+                            config.service_name,
+                            service_name,
+                            req_branch,
+                            ep["path"],
+                            ep["method"],
+                            timeout,
+                            api_type,
+                            cached_etag,
+                        )
 
                     if result.get("not_modified"):
                         print(f"\u23ed {service_name} spec unchanged (304), skipping code generation.")
@@ -191,12 +213,13 @@ def main():
                     if not config.best_effort:
                         sys.exit(1)
                     print("Continuing (best effort)")
-                
+
     except Exception as e:
         print(f"Error: {e}")
         if not config.best_effort:
             sys.exit(1)
         print("Continuing (best effort)")
+
 
 if __name__ == "__main__":
     main()

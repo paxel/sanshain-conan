@@ -169,6 +169,53 @@ When strict mode is enabled:
 - **Bearer Token Auth**: Uses `SANSHAIN_TOKEN` environment variable.
 - **GZIP Support**: Efficiently downloads large specifications.
 
+## Development
+
+### Local Development with uv
+
+It is recommended to use [uv](https://github.com/astral-sh/uv) for managing the development environment.
+
+1.  **Install uv**:
+    Follow the [official installation guide](https://github.com/astral-sh/uv#installation).
+
+2.  **Sync environment**:
+    ```bash
+    uv sync --dev
+    ```
+
+3.  **Run tests**:
+    ```bash
+    uv run python -m unittest discover tests
+    ```
+
+4.  **Linting and Checks**:
+    ```bash
+    uv run flake8 .
+    uv run black --check .
+    uv run bandit -r .
+    uv run mypy .
+    ```
+
+5.  **Running Tools without Install (uvx)**:
+    ```bash
+    uvx black .
+    ```
+
+### Traditional Installation
+
+If you prefer `pip`, you can still use it:
+
+1.  **Install dependencies**:
+    ```bash
+    pip install -r requirements-dev.txt
+    ```
+
+2.  **Run tests**:
+    ```bash
+    export PYTHONPATH=$PYTHONPATH:.
+    python3 -m unittest discover tests
+    ```
+
 ## License
 
-This project is licensed under the GNU Affero General Public License (AGPL-3.0). See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.

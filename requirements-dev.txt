@@ -1,0 +1,6 @@
+flake8
+black
+bandit
+mypy
+types-requests
+types-PyYAML

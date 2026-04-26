@@ -16,10 +16,7 @@ def get_branch():
     # 3. Try git command
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True
         )
         branch = result.stdout.strip()
         if branch and branch != "HEAD":
@@ -87,10 +84,7 @@ def _detect_branch_from_ci():
 def _resolve_branch_from_detached_head():
     try:
         result = subprocess.run(
-            ["git", "branch", "-a", "--contains", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "branch", "-a", "--contains", "HEAD"], capture_output=True, text=True, check=True
         )
         for raw_line in result.stdout.split("\n"):
             line = raw_line.strip()

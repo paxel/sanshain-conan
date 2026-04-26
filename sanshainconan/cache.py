@@ -3,7 +3,6 @@ import json
 import os
 from datetime import datetime, timezone
 
-
 DEFAULT_CACHE_DIR = ".sanshain-cache"
 CACHE_FILE = "state.json"
 
@@ -37,17 +36,14 @@ class SanshainCache:
         self.state["provides"][key] = {
             "content_hash": content_hash,
             "version": version,
-            "last_provided": datetime.now(timezone.utc).isoformat()
+            "last_provided": datetime.now(timezone.utc).isoformat(),
         }
 
     def get_require_entry(self, key):
         return self.state["requires"].get(key)
 
     def update_require_entry(self, key, etag):
-        self.state["requires"][key] = {
-            "etag": etag,
-            "last_fetched": datetime.now(timezone.utc).isoformat()
-        }
+        self.state["requires"][key] = {"etag": etag, "last_fetched": datetime.now(timezone.utc).isoformat()}
 
     @staticmethod
     def compute_hash(content):

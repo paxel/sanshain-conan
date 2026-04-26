@@ -13,10 +13,11 @@ jobs:
       pull-requests: read
     steps:
     - uses: actions/checkout@v4
-    - name: Install uv
+    - name: Install uv and Python
       uses: astral-sh/setup-uv@v5
-    - name: Set up Python
-      run: uv python install 3.11
+      with:
+        python-version: '3.11'
+        enable-cache: true
     - name: Create Release
       id: create_release
       uses: softprops/action-gh-release@v2

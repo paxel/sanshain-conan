@@ -37,5 +37,5 @@ jobs:
         uv run python -m unittest discover tests
     - name: Conan Export
       run: |
-        uv run conan profile detect
+        uv run conan profile detect --force
         uv run conan export .

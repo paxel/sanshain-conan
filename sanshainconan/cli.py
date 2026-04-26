@@ -48,7 +48,8 @@ def main():
                     print("No 'provide' section in config")
                     sys.exit(1)
                 print(
-                    "\u26a0 No provide configuration found in sanshain.yaml. Skipping. Set strict: true to fail in this case."
+                    "\u26a0 No provide configuration found in sanshain.yaml. "
+                    "Skipping. Set strict: true to fail in this case."
                 )
                 return
 
@@ -92,7 +93,8 @@ def main():
                         updates = changes.get("updates", 0)
                         deletes = changes.get("deletes", 0)
                         print(
-                            f"\u2713 Provided to Sanshain v{version}: {inserts} new, {updates} updated, {deletes} deleted endpoints"
+                            f"\u2713 Provided to Sanshain v{version}: {inserts} new, "
+                            f"{updates} updated, {deletes} deleted endpoints"
                         )
                         response_hash = response.get("content_hash", content_hash)
                         cache.update_provide_entry(file_key, response_hash, version)
@@ -163,7 +165,8 @@ def main():
                 output_path = os.path.join(config_dir, output_dir)
 
                 print(
-                    f"Requiring {len(endpoints)} endpoints from {service_name} (branch: {req_branch}, type: {api_type or 'openapi'})..."
+                    f"Requiring {len(endpoints)} endpoints from {service_name} "
+                    f"(branch: {req_branch}, type: {api_type or 'openapi'})..."
                 )
                 os.makedirs(output_path, exist_ok=True)
 

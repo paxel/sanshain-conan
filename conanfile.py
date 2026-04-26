@@ -98,7 +98,8 @@ class Sanshain:
             os.makedirs(base_output, exist_ok=True)
 
             self.conanfile.output.info(
-                f"Sanshain: Requiring {len(endpoints)} endpoints from {service_name} (branch: {branch}, type: {api_type or 'openapi'})"
+                f"Sanshain: Requiring {len(endpoints)} endpoints from {service_name} "
+                f"(branch: {branch}, type: {api_type or 'openapi'})"
             )
 
             try:

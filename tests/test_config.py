@@ -3,7 +3,7 @@ import unittest
 import yaml
 import tempfile
 import shutil
-from sanshainconan.config import load_config, SanshainConfig, ConfigError
+from sanshainconan.config import load_config, ConfigError
 
 
 class TestSanshainConfig(unittest.TestCase):

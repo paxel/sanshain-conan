@@ -35,7 +35,8 @@ class SanshainClient:
 
         if response.status_code == 409:
             raise Exception(
-                "Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state."
+                "Concurrent modification detected. Server version has advanced beyond your base_version. "
+                "Re-run to fetch the latest state."
             )
 
         raise Exception(f"Request failed with status {response.status_code}: {sanitized_body}")

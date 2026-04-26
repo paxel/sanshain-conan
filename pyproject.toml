@@ -27,4 +27,4 @@ target-version = ['py311']
 include = '\.pyi?$'
 
 [tool.bandit]
-exclude_dirs = ["tests"]
+exclude_dirs = ["tests", ".venv", "venv"]

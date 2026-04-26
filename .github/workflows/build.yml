@@ -27,10 +27,10 @@ jobs:
         uv run black --check .
     - name: Security check with bandit
       run: |
-        uv run bandit -r .
+        uv run bandit -r . --exclude .venv,venv
     - name: Type check with mypy
       run: |
-        uv run mypy .
+        uv run mypy . --exclude ".venv|venv"
     - name: Run tests
       run: |
         export PYTHONPATH=$PYTHONPATH:.

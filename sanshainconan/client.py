@@ -41,25 +41,38 @@ class SanshainClient:
 
         raise Exception(f"Request failed with status {response.status_code}: {sanitized_body}")
 
-    def provide(self, service_name, branch, openapi_yaml, base_version=None):
-        payload = {"servicename": service_name, "branch": branch, "openapi_yaml": openapi_yaml, "api_type": "openapi"}
+    def provide(self, service_name, branch, openapi_yaml, base_version=None, force=False):
+        payload = {
+            "servicename": service_name,
+            "branch": branch,
+            "openapi_yaml": openapi_yaml,
+            "api_type": "openapi",
+            "force": force,
+        }
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide", payload)
 
-    def provide_asyncapi(self, service_name, branch, asyncapi_yaml, base_version=None):
+    def provide_asyncapi(self, service_name, branch, asyncapi_yaml, base_version=None, force=False):
         payload = {
             "servicename": service_name,
             "branch": branch,
             "asyncapi_yaml": asyncapi_yaml,
             "api_type": "asyncapi",
+            "force": force,
         }
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide/asyncapi", payload)
 
-    def provide_proto(self, service_name, branch, proto_content, base_version=None):
-        payload = {"servicename": service_name, "branch": branch, "proto_content": proto_content, "api_type": "proto"}
+    def provide_proto(self, service_name, branch, proto_content, base_version=None, force=False):
+        payload = {
+            "servicename": service_name,
+            "branch": branch,
+            "proto_content": proto_content,
+            "api_type": "proto",
+            "force": force,
+        }
         if base_version is not None:
             payload["base_version"] = base_version
         return self._post_provide("/provide/grpc", payload)

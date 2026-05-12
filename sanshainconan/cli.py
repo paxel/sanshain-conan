@@ -11,6 +11,8 @@ def main():
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
+    parser.add_argument("--force", action="store_true", help="Force upload (reset shared contract source)")
+    parser.add_argument("--best-effort", action="store_true", help="Continue on errors")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -24,7 +26,26 @@ def main():
         sys.exit(1)
 
     try:
-        config = load_config(args.config)
+        config = None
+        try:
+            config = load_config(args.config)
+        except Exception as e:
+            resolved_best_effort = args.best_effort or os.environ.get("SANSHAIN_BEST_EFFORT") == "true"
+            if resolved_best_effort:
+                print(f"Warning loading config: {e}")
+                # Create a minimal config object
+                from .config import SanshainConfig
+                config = SanshainConfig({"sanshainUrl": "http://localhost:8080"})
+            else:
+                raise
+
+        if args.best_effort:
+            config.best_effort = True
+        elif os.environ.get("SANSHAIN_BEST_EFFORT") == "true":
+            config.best_effort = True
+        
+        force = args.force or os.environ.get("SANSHAIN_FORCE") == "true"
+
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         branch = get_branch()
         cache = SanshainCache()
@@ -64,26 +85,26 @@ def main():
                     effective_type = api_type or "openapi"
                     file_key = os.path.basename(file_path)
 
-                    # Feature 3: Client-side content caching — skip if unchanged
+                    # Feature 3: Client-side content caching — skip if unchanged (unless force)
                     content_hash = SanshainCache.compute_hash(content)
                     cached_entry = cache.get_provide_entry(file_key)
-                    if cached_entry and content_hash == cached_entry.get("content_hash"):
+                    if not force and cached_entry and content_hash == cached_entry.get("content_hash"):
                         print("\u23ed Spec unchanged (hash match), skipping provide.")
                         return True
 
                     # Feature 1: Use cached version as base_version if not explicitly set
                     effective_base_version = base_version
-                    if effective_base_version is None and cached_entry and cached_entry.get("version", 0) > 0:
+                    if not force and effective_base_version is None and cached_entry and cached_entry.get("version", 0) > 0:
                         effective_base_version = cached_entry["version"]
 
-                    print(f"Providing {effective_type} {config.service_name} (branch: {branch})...")
+                    print(f"Providing {effective_type} {config.service_name} (branch: {branch}, force: {force})...")
                     response = None
                     if effective_type == "openapi":
-                        response = client.provide(config.service_name, branch, content, effective_base_version)
+                        response = client.provide(config.service_name, branch, content, effective_base_version, force)
                     elif effective_type == "asyncapi":
-                        response = client.provide_asyncapi(config.service_name, branch, content, effective_base_version)
+                        response = client.provide_asyncapi(config.service_name, branch, content, effective_base_version, force)
                     elif effective_type == "proto" or effective_type == "grpc":
-                        response = client.provide_proto(config.service_name, branch, content, effective_base_version)
+                        response = client.provide_proto(config.service_name, branch, content, effective_base_version, force)
 
                     # Feature 2: Log summary and save state
                     if response and isinstance(response, dict):

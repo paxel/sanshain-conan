@@ -13,7 +13,7 @@ class Sanshain:
 
         # We import here to avoid issues when conanfile.py is loaded but sanshainconan is not yet in path
         try:
-            from sanshainconan import load_config, get_branch, SanshainClient
+            from sanshainconan import load_config, SanshainClient
         except ImportError:
             # If not in path, try adding current directory (for local testing/export)
             import sys
@@ -21,11 +21,13 @@ class Sanshain:
             current_dir = os.path.dirname(__file__)
             if current_dir not in sys.path:
                 sys.path.append(current_dir)
-            from sanshainconan import load_config, get_branch, SanshainClient
+            from sanshainconan import load_config, SanshainClient
 
         self.config = load_config(config_path)
         self.client = SanshainClient(self.config.sanshain_url)
-        self.branch = get_branch()
+        # Every provide is a snapshot unless the ga switch is set (SANSHAIN_GA=true).
+        # CI sets it on protected-branch pipelines; that is the whole mechanism.
+        self.stability = "ga" if os.environ.get("SANSHAIN_GA") == "true" else "snapshot"
 
     def provide(self):
         provides = []
@@ -40,7 +42,7 @@ class Sanshain:
         provided = False
         base_path = self.conanfile.recipe_folder or self.conanfile.base_folder
 
-        def do_provide(p, branch, file_path, api_type):
+        def do_provide(file_path, api_type):
             full_path = os.path.join(base_path, file_path)
             if not os.path.exists(full_path):
                 self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
@@ -53,32 +55,31 @@ class Sanshain:
 
             effective_type = api_type or "openapi"
             self.conanfile.output.info(
-                f"Sanshain: Providing {effective_type} {self.config.service_name} (branch: {branch})"
+                f"Sanshain: Providing {effective_type} {self.config.service_name} (stability: {self.stability})"
             )
 
             if effective_type == "openapi":
-                self.client.provide(self.config.service_name, branch, content)
+                self.client.provide(self.config.service_name, content, self.stability)
             elif effective_type == "asyncapi":
-                self.client.provide_asyncapi(self.config.service_name, branch, content)
+                self.client.provide_asyncapi(self.config.service_name, content, self.stability)
             elif effective_type == "proto" or effective_type == "grpc":
-                self.client.provide_proto(self.config.service_name, branch, content)
+                self.client.provide_proto(self.config.service_name, content, self.stability)
             return True
 
         for p in provides:
-            branch = p.get("branch") or self.branch
             if "file" in p:
-                if do_provide(p, branch, p["file"], p.get("apiType")):
+                if do_provide(p["file"], p.get("apiType")):
                     provided = True
 
             # Backward compatibility
             if "openApiFile" in p:
-                if do_provide(p, branch, p["openApiFile"], "openapi"):
+                if do_provide(p["openApiFile"], "openapi"):
                     provided = True
             if "asyncApiFile" in p:
-                if do_provide(p, branch, p["asyncApiFile"], "asyncapi"):
+                if do_provide(p["asyncApiFile"], "asyncapi"):
                     provided = True
             if "protoFile" in p:
-                if do_provide(p, branch, p["protoFile"], "proto"):
+                if do_provide(p["protoFile"], "proto"):
                     provided = True
 
         if provided:
@@ -89,8 +90,7 @@ class Sanshain:
             service_name = req["serviceName"]
             output_dir = req["outputDirectory"]
             endpoints = req["endpoints"]
-            branch = req.get("branch") or self.branch
-            timeout = req.get("timeout") or self.config.timeout
+            version = req["version"]
             api_type = req.get("apiType")
 
             # Resolve output_dir relative to project root
@@ -99,20 +99,21 @@ class Sanshain:
 
             self.conanfile.output.info(
                 f"Sanshain: Requiring {len(endpoints)} endpoints from {service_name} "
-                f"(branch: {branch}, type: {api_type or 'openapi'})"
+                f"(version: {version}, type: {api_type or 'openapi'})"
             )
 
             try:
                 if len(endpoints) > 1:
-                    content = self.client.require_bundle(
-                        self.config.service_name, service_name, branch, endpoints, timeout, api_type
+                    result = self.client.require_bundle(
+                        self.config.service_name, service_name, version, endpoints, api_type
                     )
                 else:
                     ep = endpoints[0]
-                    content = self.client.require(
-                        self.config.service_name, service_name, branch, ep["path"], ep["method"], timeout, api_type
+                    result = self.client.require(
+                        self.config.service_name, service_name, version, ep["path"], ep["method"], api_type
                     )
 
+                content = result["content"]
                 ext = "proto" if api_type == "proto" else "yaml"
                 output_file = os.path.join(base_output, f"{service_name}.{ext}")
                 with open(output_file, "w") as f:
@@ -127,7 +128,7 @@ class Sanshain:
 
 class SanshainConan(ConanFile):
     name = "sanshain-conan"
-    version = "1.4.0"
+    version = "2.0.0"
     license = "Apache-2.0"
     author = "Junie"
     url = "https://github.com/sanshain/sanshain-conan"

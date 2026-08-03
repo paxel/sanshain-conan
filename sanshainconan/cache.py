@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -8,6 +7,9 @@ CACHE_FILE = "state.json"
 
 
 class SanshainCache:
+    """Require-side ETag cache: remembers the ETag of each downloaded snippet
+    so subsequent runs can send If-None-Match and skip on 304 Not Modified."""
+
     def __init__(self, cache_dir=None):
         d = cache_dir or DEFAULT_CACHE_DIR
         self.cache_file = os.path.join(d, CACHE_FILE)
@@ -17,14 +19,12 @@ class SanshainCache:
         try:
             if os.path.exists(self.cache_file):
                 with open(self.cache_file, "r") as f:
-                    return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+                    state = json.load(f)
+                    if isinstance(state, dict) and isinstance(state.get("requires"), dict):
+                        return {"requires": state["requires"]}
+        except (OSError, json.JSONDecodeError):
             pass
-        except Exception:  # nosec B110
-            # Other errors should also result in an empty state but maybe we want to log them?
-            # For now keep it quiet as it was before, but avoid bare except
-            pass
-        return {"provides": {}, "requires": {}}
+        return {"requires": {}}
 
     def save(self):
         d = os.path.dirname(self.cache_file)
@@ -33,16 +33,6 @@ class SanshainCache:
         with open(self.cache_file, "w") as f:
             json.dump(self.state, f, indent=2)
 
-    def get_provide_entry(self, key):
-        return self.state["provides"].get(key)
-
-    def update_provide_entry(self, key, content_hash, version):
-        self.state["provides"][key] = {
-            "content_hash": content_hash,
-            "version": version,
-            "last_provided": datetime.now(timezone.utc).isoformat(),
-        }
-
     def get_require_entry(self, key):
         return self.state["requires"].get(key)
 
@@ -50,14 +40,9 @@ class SanshainCache:
         self.state["requires"][key] = {"etag": etag, "last_fetched": datetime.now(timezone.utc).isoformat()}
 
     @staticmethod
-    def compute_hash(content):
-        h = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        return f"sha256:{h}"
+    def require_key(service_name, version, method, path):
+        return f"{service_name}|{version}|{method}|{path}"
 
     @staticmethod
-    def require_key(service_name, branch, method, path):
-        return f"{service_name}|{branch}|{method}|{path}"
-
-    @staticmethod
-    def require_bundle_key(service_name, branch):
-        return f"{service_name}|{branch}|bundle"
+    def require_bundle_key(service_name, version):
+        return f"{service_name}|{version}|bundle"

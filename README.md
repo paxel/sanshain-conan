@@ -1,11 +1,21 @@
 # Sanshain Conan Plugin
 
-A Conan extension to manage OpenAPI specifications during the C++ build process.
+A Conan extension to manage API specifications (OpenAPI, AsyncAPI, gRPC/Proto) during the C++ build process.
+
+**Compatibility: sanshain-conan 2.x speaks Sanshain Service 2.x.**
 
 ## Description
 Sanshain Conan Plugin allows you to:
--   **Provide**: Upload your service's OpenAPI specification to the Sanshain service.
--   **Require**: Download OpenAPI snippets of other services to generate client code.
+-   **Provide**: Upload your service's API specification to the Sanshain service under the version declared in the spec file itself.
+-   **Require**: Download API snippets of other services, pinned to an exact version, to generate client code.
+
+## The 2.0 model
+
+Sanshain 2.0 replaced branches with producer-declared versions:
+
+-   **The version lives in the spec file.** For OpenAPI/AsyncAPI it is read from `info.version`; proto files must carry a `// sanshain-version: MAJOR.MINOR.PATCH` comment. Strict three-part semver, no suffixes.
+-   **Stability is declared on every provide.** Every provide is a `snapshot` (overwritable work-in-progress) unless the ga switch is set — then it is `ga` (immutable; the number is permanently claimed).
+-   **Consumers pin exact versions.** Each `requires` entry names the exact `version` to build against. No ranges, no `latest`, no fallback, no waiting.
 
 ## Installation
 Add the repository to your `conanfile.py` using `python_requires`:
@@ -13,11 +23,11 @@ Add the repository to your `conanfile.py` using `python_requires`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/1.4.0"
-    
+    python_requires = "sanshain-conan/2.0.0"
+
     def generate(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
-        # Download required OpenAPI specs (runs during `conan install`)
+        # Download required API specs (runs during `conan install`)
         sanshain.require()
         # proceed with client generation and build
 ```
@@ -31,17 +41,36 @@ sanshainUrl: "https://sanshain.example.com"
 serviceName: "my-cpp-service"
 
 provides:
-  - file: "openapi.yaml"
+  - file: "openapi.yaml"        # version read from its info.version
 
 requires:
   - serviceName: "other-service"
+    version: "1.2.0"            # exact pin (MAJOR.MINOR.PATCH)
     outputDirectory: "generated/sanshain"
     endpoints:
       - method: GET
         path: /api/v1/user
 ```
 
-The `branch` is automatically detected from Git or common CI environment variables. It can be overridden via `SANSHAIN_BRANCH`.
+`sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file, and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
+
+## Stability: the ga switch
+
+Every provide is a `snapshot` by default — a developer building locally can never accidentally release. `ga` is an explicit act:
+
+-   Environment variable: `SANSHAIN_GA=true` (works for the CLI and the Conan integration)
+-   CLI flag: `--ga`
+
+CI sets the switch on its protected-branch pipelines; that is the whole mechanism. There is no git detection and no branch matching.
+
+```bash
+# Local / feature pipeline: snapshot
+python3 -m sanshainconan.cli provide
+
+# Release pipeline: ga
+python3 -m sanshainconan.cli --ga provide
+# or: SANSHAIN_GA=true python3 -m sanshainconan.cli provide
+```
 
 ## Usage
 
@@ -53,11 +82,11 @@ Add it as a `python_requires` in your `conanfile.py`:
 from conan import ConanFile
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/1.4.0"
-    
+    python_requires = "sanshain-conan/2.0.0"
+
     def generate(self):
         sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
-        # Download required OpenAPI specs (runs during `conan install`)
+        # Download required API specs (runs during `conan install`)
         sanshain.require()
 ```
 
@@ -77,48 +106,41 @@ class MyProject(ConanFile):
 ### CLI Tool
 
 ```bash
-# Provide (upload) spec — run in CI after tests pass
+# Provide (upload) spec — run in CI after tests pass; add --ga on release pipelines
 python3 -m sanshainconan.cli provide
 
 # Require (download) specs — alternative to generate() integration
 python3 -m sanshainconan.cli require
 ```
 
-## v0.14.0 Features
-
-### Optimistic Concurrency Control (`baseVersion`)
-
-Add `baseVersion` to your provide configuration to detect concurrent modifications:
-
-```yaml
-provides:
-  - file: openapi.yaml
-    baseVersion: 5
-```
-
-If the server version has advanced beyond your `baseVersion`, the provide call fails with:
-
-> Concurrent modification detected. Server version has advanced beyond your base_version. Re-run to fetch the latest state.
-
-The CLI automatically tracks the last known version in a local cache, so after the first successful provide, subsequent runs send the correct `base_version` automatically.
-
-### Provide Response Summary
+## Provide Response Summary
 
 After each successful provide, the CLI logs a human-readable summary:
 
 ```
-✓ Provided to Sanshain v5: 2 new, 1 updated, 0 deleted endpoints
+✓ Provided 1.4.0 (snapshot): 2 new, 1 updated, 0 deleted endpoints
 ```
 
-### Client-Side Content Caching (Skip-if-unchanged)
+Re-providing byte-identical content is a no-op on the server (`changes` reports all zero), so CI re-runs of the same commit never fight.
 
-Before uploading, the CLI computes the SHA-256 hash of the spec file and compares it with the cached hash from the last provide. If unchanged:
+## Failure Modes
 
-```
-⏭ Spec unchanged (hash match), skipping provide.
-```
+The 2.0 server fails immediately — nothing waits:
 
-### Require-Side ETag Caching
+-   **`404` Unknown**: the producer or the pinned version does not exist (in either stability). A configuration error — fix the `version` pin. List what exists: `GET /producers/<serviceName>/versions`.
+-   **`410` Absent**: the pinned version exists but deliberately does not include the requested endpoint(s).
+-   **`409` Version conflict** (provide): rejected by the version rules — e.g. re-providing an existing GA version with different content. The CLI surfaces the server's message and the proposed next free version:
+
+    ```
+    ✗ Version conflict: GA 1.2.0 is immutable
+      Publish as 1.3.0 — update info.version in specs/openapi.yaml
+    ```
+
+    The plugin never modifies your spec files — bump the version yourself and republish.
+
+-   **Wrong server**: if a provide/require fails and the instance turns out to be pre-2.0, the confusing error is replaced with `Sanshain server at <url> is <version>; this client requires Sanshain 2.x — upgrade the server.`
+
+## Require-Side ETag Caching
 
 The CLI stores the `ETag` from require responses and sends `If-None-Match` on subsequent runs. On `304 Not Modified`:
 
@@ -126,21 +148,16 @@ The CLI stores the `ETag` from require responses and sends `If-None-Match` on su
 ⏭ user-service spec unchanged (304), skipping code generation.
 ```
 
+A pin on a GA version can never change content; a pin on a snapshot can — which is exactly what the ETag detects.
+
 ### State File
 
-The local cache is stored at `.sanshain-cache.json` in the current working directory. The format is:
+The local cache is stored at `.sanshain-cache/state.json` in the current working directory. The format is:
 
 ```json
 {
-  "provides": {
-    "openapi.yaml": {
-      "content_hash": "sha256:abc123...",
-      "version": 5,
-      "last_provided": "2026-04-25T12:00:00Z"
-    }
-  },
   "requires": {
-    "user-service|main|GET|/api/v1/users": {
+    "user-service|1.2.0|GET|/api/v1/users": {
       "etag": "\"sha256:def456...\"",
       "last_fetched": "2026-04-25T12:00:00Z"
     }
@@ -163,9 +180,11 @@ When strict mode is enabled:
 - No `provides` configured → exit with error
 - No `requires` configured → exit with error
 
+Note that a `requires` entry without a `version`, or any leftover branch-era field, is always a hard error — strict mode does not change that.
+
 ## Features
-- **Automatic Branch Detection**: Supports Git, GitHub Actions, GitLab CI, and Jenkins.
-- **Bundle Support**: Downloads merged OpenAPI specs for multiple endpoints.
+- **Exact Version Pins**: Requires resolve immediately against the pinned version — GA preferred, else the same-numbered snapshot, else failure.
+- **Bundle Support**: Downloads merged API specs for multiple endpoints with deduplicated schemas.
 - **Bearer Token Auth**: Uses `SANSHAIN_TOKEN` environment variable.
 - **GZIP Support**: Efficiently downloads large specifications.
 

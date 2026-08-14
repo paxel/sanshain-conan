@@ -7,26 +7,25 @@ This guide explains how to use `sanshain-conan` in your C++ projects.
 ## Prerequisite
 
 1.  A `sanshain.yaml` file in your project root, with each `requires` entry pinned to an exact `version`.
-2.  `sanshain-conan` exported to your local Conan cache or available in a remote.
+2.  `sanshain-conan` installed from PyPI into the environment Conan runs in:
 
 ```bash
-# Export the plugin locally
-conan export .
+pip install sanshain-conan
 ```
 
 ## Using in `conanfile.py`
 
-To use the plugin, declare it in `python_requires` and call the `Sanshain` helper.
+Import the helper directly — the `python_requires` pattern is gone; it resolved
+from a Conan remote, and the package ships on PyPI instead.
 
 ```python
 from conan import ConanFile
+from sanshainconan import Sanshain
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/2.0.0"
-
     def generate(self):
         # Initialize the helper
-        sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
+        sanshain = Sanshain(self)
 
         # Download all dependencies declared in sanshain.yaml
         sanshain.require()

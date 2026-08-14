@@ -1,3 +1,10 @@
+# Release on tag: `git tag v2.0.0 && git push github v2.0.0` produces the
+# GitHub Release and the PyPI publish.
+#
+# PyPI auth is Trusted Publishing (OIDC): no stored token — the `id-token`
+# permission plus a trusted-publisher entry on the PyPI project pointing at
+# this repository and this workflow file. The first publish of the name happens
+# manually, so the project exists to configure the publisher on.
 name: Release
 
 on:
@@ -6,20 +13,53 @@ on:
       - 'v*'
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      # The mistake a hand-cut tag makes: tagging v2.1.0 without bumping the
+      # manifest. PyPI publishes what pyproject.toml says, so the tag would
+      # name a version nobody can install.
+      - name: Tag matches the package version
+        run: |
+          ver=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          tag=${GITHUB_REF_NAME#v}
+          [ "$ver" = "$tag" ] || { echo "tag v$tag != package version $ver" >&2; exit 1; }
+      - name: Tests
+        run: uv run --with pytest --with requests --with pyyaml --no-project python -m pytest tests/ -q
+      - name: Build sdist and wheel
+        run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   release:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
     steps:
-    - uses: actions/checkout@v4
-    - name: Install uv and Python
-      uses: astral-sh/setup-uv@v5
-      with:
-        python-version: '3.11'
-        enable-cache: true
-    - name: Create Release
-      id: create_release
-      uses: softprops/action-gh-release@v2
-      with:
-        generate_release_notes: true
+      - uses: actions/checkout@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+  publish-pypi:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1

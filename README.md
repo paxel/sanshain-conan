@@ -18,19 +18,29 @@ Sanshain 2.0 replaced branches with producer-declared versions:
 -   **Consumers pin exact versions.** Each `requires` entry names the exact `version` to build against. No ranges, no `latest`, no fallback, no waiting.
 
 ## Installation
-Add the repository to your `conanfile.py` using `python_requires`:
+
+Install from PyPI, into the same environment Conan runs in:
+
+```bash
+pip install sanshain-conan
+```
+
+Then import the helper directly in your `conanfile.py`:
+
 ```python
 from conan import ConanFile
+from sanshainconan import Sanshain
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/2.0.0"
-
     def generate(self):
-        sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
+        sanshain = Sanshain(self)
         # Download required API specs (runs during `conan install`)
         sanshain.require()
         # proceed with client generation and build
 ```
+
+> The 1.x/2.0 `python_requires = "sanshain-conan/x.y.z"` pattern is gone — it
+> resolved from a Conan remote, and the package now ships on PyPI instead.
 
 ## Configuration
 
@@ -52,7 +62,46 @@ requires:
         path: /api/v1/user
 ```
 
-`sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file, and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
+`sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
+
+## Streams: trunk and release branches
+
+Alongside stability, the pipeline declares which dependency graph its calls belong to. Like the
+ga switch this is a property of the invocation and never appears in `sanshain.yaml`:
+
+- Trunk CI sets `SANSHAIN_TRUNK=true` (CLI: `--trunk`) — provides mark trunk's current version
+  and requires feed the main graph.
+- Release and hotfix pipelines set `SANSHAIN_TAG=<branch>` (CLI: `--tag`) — the calls update
+  that sanshain-branch instead of trunk. The branch must already exist; an unknown one answers `404`.
+
+Declaring both fails before any request is sent.
+
+## Retiring a protocol
+
+Removing a `provides` entry tells Sanshain nothing — it cannot distinguish a dropped protocol
+from a pipeline that stopped running. Keep the entry and mark it:
+
+```yaml
+provides:
+  - apiType: asyncapi
+    retired: true
+```
+
+The next provide retires that family: the capability tag is cleared, it leaves the current
+dependency graph, and its AsyncAPI channel contracts are released. Version history and existing
+Consumer pins are untouched. Retiring needs the `releaser` role — which a release pipeline
+already holds — or a maintainer grant on the Producer; publishing GA needs `releaser` too, and
+a `403` names the role and the snapshot fallback.
+
+> ⚠️ **AsyncAPI 2.x perspective.** Sanshain reads 2.x `publish`/`subscribe` from the
+> **application's** perspective: `publish` means *this service publishes to the channel*,
+> `subscribe` means *this service consumes it*. The AsyncAPI 2.x specification defines those
+> keywords from the **client's** perspective — exactly inverted. Sanshain deliberately uses the
+> application-perspective reading because it matches the unambiguous 3.x `send`/`receive`
+> mapping. A document authored with the spec-literal reading registers its contracts, and has
+> its subscriptions harvested, exactly backwards. Harvested subscriptions are printed after
+> every AsyncAPI provide; those with drift or no publisher yet are warnings and never fail the
+> build.
 
 ## Stability: the ga switch
 
@@ -76,16 +125,15 @@ python3 -m sanshainconan.cli --ga provide
 
 ### Conan Integration
 
-Add it as a `python_requires` in your `conanfile.py`:
+Import the installed package in your `conanfile.py`:
 
 ```python
 from conan import ConanFile
+from sanshainconan import Sanshain
 
 class MyProject(ConanFile):
-    python_requires = "sanshain-conan/2.0.0"
-
     def generate(self):
-        sanshain = self.python_requires["sanshain-conan"].module.Sanshain(self)
+        sanshain = Sanshain(self)
         # Download required API specs (runs during `conan install`)
         sanshain.require()
 ```

@@ -3,7 +3,7 @@ import os
 import sys
 
 from .cache import SanshainCache
-from .client import SanshainClient, SanshainError, VersionConflictError
+from .client import SanshainClient, SanshainError, VersionConflictError, resolve_stream
 from .config import load_config
 
 
@@ -31,6 +31,16 @@ def main():
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
     parser.add_argument("--ga", action="store_true", help="Provide as ga (immutable release); default is snapshot")
+    parser.add_argument(
+        "--trunk",
+        action="store_true",
+        help="this build is trunk's: it maintains the main graph (also SANSHAIN_TRUNK=true)",
+    )
+    parser.add_argument(
+        "--tag",
+        default=None,
+        help="this build belongs to a sanshain-branch — release/hotfix pipelines (also SANSHAIN_TAG)",
+    )
     parser.add_argument("--best-effort", action="store_true", help="Continue on errors")
 
     subparsers = parser.add_subparsers(dest="command")
@@ -66,6 +76,7 @@ def main():
 
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         strict = config.strict
+        trunk, tag = resolve_stream(args.trunk, args.tag)
 
         if args.command == "provide":
             if not config.service_name:
@@ -109,11 +120,13 @@ def main():
                 print(f"Providing {effective_type} {config.service_name} (stability: {stability})...")
                 try:
                     if effective_type == "openapi":
-                        response = client.provide(config.service_name, content, stability)
+                        response = client.provide(config.service_name, content, stability, trunk=trunk, tag=tag)
                     elif effective_type == "asyncapi":
-                        response = client.provide_asyncapi(config.service_name, content, stability)
+                        response = client.provide_asyncapi(
+                            config.service_name, content, stability, trunk=trunk, tag=tag
+                        )
                     elif effective_type == "proto" or effective_type == "grpc":
-                        response = client.provide_proto(config.service_name, content, stability)
+                        response = client.provide_proto(config.service_name, content, stability, trunk=trunk, tag=tag)
                     else:
                         raise SanshainError(f"Unknown apiType: {effective_type}")
                 except VersionConflictError as e:
@@ -134,9 +147,48 @@ def main():
                         f"✓ Provided {version} ({resp_stability}): {inserts} new, "
                         f"{updates} updated, {deletes} deleted endpoints"
                     )
+                    # Surface the harvest, or the feature is invisible: a
+                    # subscription expecting a field no contract guarantees
+                    # would only be discovered later, on the GA provide the
+                    # server refuses. Advisories never fail the build — that
+                    # 409 is the server's job.
+                    for sub in response.get("harvested_subscriptions") or []:
+                        line = f"{sub.get('channel', '?')} / {sub.get('message_name', '?')}"
+                        owner = sub.get("owner")
+                        line += f" <- {owner}" if owner else " <- (no publisher yet)"
+                        drift = sub.get("drift")
+                        if drift:
+                            line += f" — {drift}"
+                        marker = "⚠" if drift or not owner else " "
+                        print(f"{marker} subscription {line}")
+                return True
+
+            def do_retire(api_type):
+                family = api_type or "openapi"
+                print(f"Retiring {family} for {config.service_name}...")
+                try:
+                    shed = client.retire(config.service_name, family)
+                except SanshainError as e:
+                    print(f"✗ {e}")
+                    if not config.best_effort:
+                        sys.exit(1)
+                    print("Continuing (best effort)")
+                    return False
+                shed = shed or {}
+                cleared = shed.get("tag_cleared")
+                capability = f": cleared the '{cleared}' capability" if cleared else ""
+                print(
+                    f"✓ Retired{capability}, closed {shed.get('trunk_pins_closed', 0)} trunk pin(s), "
+                    f"released {shed.get('contracts_released', 0)} contract(s). "
+                    "History and existing pins are untouched."
+                )
                 return True
 
             for p in provides:
+                if p.get("retired"):
+                    if do_retire(p.get("apiType")):
+                        provided = True
+                    continue
                 if "file" in p:
                     if do_provide_file(p["file"], p.get("apiType")):
                         provided = True
@@ -201,7 +253,14 @@ def main():
                         cached_etag = cached_entry.get("etag") if cached_entry else None
 
                         result = client.require_bundle(
-                            config.service_name, service_name, version, endpoints, api_type, cached_etag
+                            config.service_name,
+                            service_name,
+                            version,
+                            endpoints,
+                            api_type,
+                            cached_etag,
+                            trunk=trunk,
+                            tag=tag,
                         )
                     else:
                         ep = endpoints[0]
@@ -217,6 +276,8 @@ def main():
                             ep["method"],
                             api_type,
                             cached_etag,
+                            trunk=trunk,
+                            tag=tag,
                         )
 
                     if result.get("not_modified"):

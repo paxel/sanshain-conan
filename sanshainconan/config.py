@@ -60,6 +60,11 @@ class SanshainConfig:
 
         def validate_provide(p, context):
             reject_branch_era(p, context, _BRANCH_HINT_PROVIDE)
+            # A retired entry names its family via apiType alone: the project
+            # no longer provides it, so demanding a spec file would force a
+            # dead file to stay on disk forever.
+            if p.get("retired"):
+                return
             if not any(k in p for k in ["file", "openApiFile", "asyncApiFile", "protoFile"]):
                 raise ConfigError(
                     f"At least one of file, openApiFile, asyncApiFile, or protoFile must be specified in {context}"

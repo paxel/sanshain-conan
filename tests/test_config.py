@@ -3,7 +3,7 @@ import unittest
 import yaml
 import tempfile
 import shutil
-from sanshainconan.config import load_config, ConfigError
+from sanshainconan.config import load_config, ConfigError, SanshainConfig
 
 
 class TestSanshainConfig(unittest.TestCase):
@@ -137,3 +137,17 @@ class TestSanshainConfig(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("'releaseBranches' is no longer supported", msg)
         self.assertIn("SANSHAIN_GA=true", msg)
+
+
+class TestRetiredEntries(unittest.TestCase):
+    def test_a_retired_entry_needs_no_file(self):
+        # The project no longer provides the family, so demanding a spec file
+        # would force a dead file to stay on disk forever.
+        config = SanshainConfig(
+            {
+                "sanshainUrl": "http://localhost:8080",
+                "serviceName": "svc",
+                "provides": [{"apiType": "asyncapi", "retired": True}],
+            }
+        )
+        self.assertTrue(config.provides[0]["retired"])

@@ -1,15 +1,13 @@
 image: alpine/edge
 packages:
   - py3-pip
-  - build-base
-  - cmake
 sources:
   - https://git.sr.ht/~taum/sanshainConan
 tasks:
-  - setup: |
-      pip install --break-system-packages conan 
-      /home/build/.local/bin/conan profile detect
-  - build: |
+  # A plain pip package since 2.0: the python_requires recipe (and its
+  # `conan export` smoke test) is gone — consumers `pip install sanshain-conan`
+  # and import the helper in their conanfile.
+  - test: |
       cd sanshainConan
-      # This is a python_requires project, we just verify it can be "exported" or similar
-      /home/build/.local/bin/conan export .
+      pip install --break-system-packages pytest requests pyyaml
+      python3 -m pytest tests/ -q

@@ -35,7 +35,7 @@ jobs:
       run: |
         export PYTHONPATH=$PYTHONPATH:.
         uv run python -m unittest discover tests
-    - name: Conan Export
-      run: |
-        uv run conan profile detect --force
-        uv run conan export .
+    # The python_requires recipe (and its `conan export` smoke test) is gone —
+    # the package ships on PyPI; building the wheel is the packaging check.
+    - name: Build sdist and wheel
+      run: uv build

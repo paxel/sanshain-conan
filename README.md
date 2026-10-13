@@ -2,12 +2,13 @@
 
 A Conan extension to manage API specifications (OpenAPI, AsyncAPI, gRPC/Proto) during the C++ build process.
 
-**Compatibility: sanshain-conan 2.x speaks Sanshain Service 2.x.**
+**Compatibility: sanshain-conan 2.x speaks Sanshain Service 2.x. The `catalog` command needs Sanshain Service 2.4.0 or later; all other commands work with any 2.x service.**
 
 ## Description
 Sanshain Conan Plugin allows you to:
 -   **Provide**: Upload your service's API specification to the Sanshain service under the version declared in the spec file itself.
 -   **Require**: Download API snippets of other services, pinned to an exact version, to generate client code.
+-   **Catalog**: Push the project's Backstage `catalog-info.yaml`, so Sanshain's network graph shows the resources (databases, buckets, queues) the service depends on. Needs Sanshain Service 2.4.0 or later.
 
 ## The 2.0 model
 
@@ -49,6 +50,7 @@ The plugin uses the standard `sanshain.yaml` file in the project root:
 ```yaml
 sanshainUrl: "https://sanshain.example.com"
 serviceName: "my-cpp-service"
+catalogInfo: "catalog-info.yaml"  # optional, pushed by the catalog command
 
 provides:
   - file: "openapi.yaml"        # version read from its info.version
@@ -62,7 +64,7 @@ requires:
         path: /api/v1/user
 ```
 
-Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`) resolves against the folder that contains `sanshain.yaml`, never the working directory; absolute paths stay absolute. A config passed via `--config` (CLI) or `config_path` (Conan helper) therefore finds the same files as one in the current folder.
+Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`, `catalogInfo`) resolves against the folder that contains `sanshain.yaml`, never the working directory; absolute paths stay absolute. A config passed via `--config` (CLI) or `config_path` (Conan helper) therefore finds the same files as one in the current folder.
 
 `sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
@@ -179,6 +181,35 @@ python3 -m sanshainconan.cli provide
 
 # Require (download) specs — alternative to generate() integration
 python3 -m sanshainconan.cli require
+
+# Push catalog-info.yaml (needs Sanshain Service 2.4.0)
+sanshain-conan catalog
+```
+
+The installed package also provides the `sanshain-conan` command; `sanshain-conan provide` is the same as `python3 -m sanshainconan.cli provide`.
+
+## Catalog
+
+`catalogInfo` in `sanshain.yaml` names the project's Backstage `catalog-info.yaml`. The `catalog` command (CLI: `sanshain-conan catalog`; Conan helper: `Sanshain(self).catalog()`) pushes it with `PUT /catalog/<serviceName>`. Sanshain reads only the `Component` whose `metadata.name` equals `serviceName`, and of it only the `resource:` refs in `spec.dependsOn`; each push replaces the previous set.
+
+**Needs Sanshain Service 2.4.0 or later.** An older service answers `404`, reported as `sanshain catalog needs Sanshain Service 2.4.0 or later (server is <version>)`. Every other command works with any 2.x service.
+
+-   A trunk build (`--trunk` / `SANSHAIN_TRUNK=true`) updates the main and the dev graph; any other build only the dev graph. A sanshain-branch (`--tag`) is not sent.
+-   On success:
+
+    ```
+    Catalog recorded for orders-service (main+dev): 2 resources
+      resource:default/orders-bucket
+      resource:default/orders-db
+    ```
+
+-   Without `catalogInfo` the command warns `No catalogInfo in sanshain.yaml - skipping catalog.` and exits 0; with `strict: true` it fails. Strict checks only `serviceName` and `catalogInfo` here, never provides or requires.
+-   A missing file fails naming the resolved path. A `400` means Sanshain could not read the file as this project's Component — usually a `metadata.name` that is not the `serviceName`. With `--best-effort` (or `SANSHAIN_BEST_EFFORT` / `bestEffort: true`) every failed push is a warning and the command exits 0.
+
+Add it as a CI step next to `provide`, e.g. on trunk:
+
+```bash
+SANSHAIN_TRUNK=true sanshain-conan catalog
 ```
 
 ## Provide Response Summary
@@ -235,7 +266,7 @@ The local cache is stored at `.sanshain-cache/state.json` in the current working
 
 ## Strict Mode
 
-By default, the CLI warns and skips when configuration is incomplete (no `serviceName`, no `provides`, no `requires`). This makes it safe to run both commands even if only one applies.
+By default, the CLI warns and skips when configuration is incomplete (no `serviceName`, no `provides`, no `requires`, no `catalogInfo` for `catalog`). This makes it safe to run both commands even if only one applies.
 
 To fail on missing configuration, enable strict mode in `sanshain.yaml`:
 
@@ -247,6 +278,7 @@ When strict mode is enabled:
 - Missing `serviceName` → exit with error
 - No `provides` configured → exit with error
 - No `requires` configured → exit with error
+- `catalog` without `catalogInfo` → exit with error (`catalog` checks only `serviceName` and `catalogInfo`)
 - An unknown field in `sanshain.yaml` → exit with error (see [Unknown fields](#unknown-fields))
 
 Note that a `requires` entry without a `version`, or any leftover branch-era field, is always a hard error — strict mode does not change that.

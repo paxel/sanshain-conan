@@ -3,8 +3,9 @@ import os
 import sys
 
 from .cache import SanshainCache
+from .catalog import run_catalog
 from .client import SanshainClient, SanshainError, VersionConflictError, resolve_stream
-from .config import env_flag, load_config, puzzled_cat
+from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
 def resolve_stability(ga_flag=False):
@@ -47,6 +48,9 @@ def main():
 
     subparsers.add_parser("provide", help="Upload local spec to Sanshain")
     subparsers.add_parser("require", help="Download required specs from Sanshain")
+    subparsers.add_parser(
+        "catalog", help="Push the catalogInfo file (Backstage catalog-info.yaml) to Sanshain (needs Service 2.4.0)"
+    )
 
     args = parser.parse_args()
 
@@ -84,6 +88,21 @@ def main():
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         strict = config.strict
         trunk, tag = resolve_stream(args.trunk, args.tag)
+
+        if args.command == "catalog":
+            config_dir = os.path.dirname(os.path.abspath(args.config))
+            try:
+                run_catalog(config, client, config_dir, trunk, print, print)
+            except ConfigError as e:
+                print(e)
+                sys.exit(1)
+            except SanshainError as e:
+                if not config.best_effort:
+                    print(f"✗ {e}")
+                    sys.exit(1)
+                print(f"⚠ {e}")
+                print("Continuing (best effort)")
+            return
 
         if args.command == "provide":
             if not config.service_name:

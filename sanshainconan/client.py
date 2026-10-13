@@ -1,5 +1,6 @@
 import os
 import string
+from urllib.parse import quote
 
 import requests
 
@@ -300,3 +301,38 @@ class SanshainClient:
         self._handle_response(response, producer_name)
         response_etag = response.headers.get("ETag")
         return {"not_modified": False, "content": response.text, "etag": response_etag}
+
+    def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo"):
+        """Record the system's periphery from its Backstage catalog-info.yaml (PUT /catalog/<system>).
+
+        Carries `trunk: true` only for a trunk build and never a tag: the
+        endpoint answers 422 to unknown fields. Needs Sanshain Service 2.4.0.
+        """
+        payload = {"catalog_info_yaml": catalog_info_yaml}
+        if trunk:
+            payload["trunk"] = True
+        response = requests.put(
+            f"{self.url}/catalog/{quote(system_name, safe='')}",
+            json=payload,
+            headers=self.headers,
+            verify=self.verify,
+            timeout=HTTP_TIMEOUT,
+        )
+        if response.status_code == 400:
+            try:
+                error = response.json().get("error")
+            except (ValueError, AttributeError):
+                error = None
+            raise SanshainError(
+                f"Sanshain rejected {file_label}: {sanitize(error or response.text)}. "
+                f"The Component's metadata.name must equal serviceName '{system_name}'."
+            )
+        if response.status_code == 404:
+            version = self.get_server_version()
+            server = f"server is {version}" if version else "server version unknown"
+            raise SanshainError(f"sanshain catalog needs Sanshain Service 2.4.0 or later ({server})")
+        self._handle_response(response, system_name)
+        try:
+            return response.json()
+        except ValueError:
+            return {}

@@ -120,6 +120,7 @@ class SanshainConfig:
         self.compression = data.get("compression", False)
         self.best_effort = data.get("bestEffort", False)
         self.strict = data.get("strict", False)
+        self.catalog_info = data.get("catalogInfo")
 
         self.provide = data.get("provide")
         self.provides = data.get("provides", [])

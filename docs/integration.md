@@ -51,6 +51,9 @@ Reads the `provide` section from `sanshain.yaml` and uploads the specification t
 ### `sanshain.require()`
 Reads the `requires` section from `sanshain.yaml` and downloads the specifications at each entry's pinned `version` to the specified output directories.
 
+### `sanshain.catalog()`
+Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A rejected push raises — a `400` usually means the Component's `metadata.name` is not the `serviceName` — or only warns with `bestEffort: true`. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
+
 ## CI/CD Integration
 
 ### Authentication
@@ -76,6 +79,7 @@ Set it only on protected-branch (release) pipelines. There is no git or branch d
 2.  Run OpenAPI generator on the downloaded `openapi.yaml` files.
 3.  Build your C++ project.
 4.  In CI, after tests pass, run `python3 -m sanshainconan.cli provide` to publish your own API (add `--ga` on the release pipeline).
+5.  Optionally, in CI, run `sanshain-conan catalog` to push `catalog-info.yaml` (needs Sanshain Service 2.4.0).
 
 ## Failure Modes
 

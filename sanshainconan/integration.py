@@ -20,7 +20,8 @@ three are pipeline concerns and never live in `sanshain.yaml`.
 
 import os
 
-from .client import SanshainClient, resolve_stream
+from .catalog import run_catalog
+from .client import SanshainClient, SanshainError, resolve_stream
 from .config import ConfigError, env_flag, load_config, puzzled_cat, unknown_fields_message
 
 
@@ -128,6 +129,22 @@ class Sanshain:
 
         if provided:
             self.conanfile.output.info("Sanshain: Successfully provided spec(s)")
+
+    def catalog(self):
+        """Push the `catalogInfo` file (Backstage catalog-info.yaml) to Sanshain; needs Service 2.4.0.
+
+        Without catalogInfo it warns and skips (strict: raises). A failed push
+        raises, or only warns under bestEffort.
+        """
+        output = self.conanfile.output
+        try:
+            run_catalog(self.config, self.client, self.base_path, self.trunk, output.info, output.warning)
+        except SanshainError as e:
+            if not self.config.best_effort:
+                output.error(f"Sanshain: {e}")
+                raise
+            output.warning(f"Sanshain: {e}")
+            output.warning("Sanshain: Continuing (best effort)")
 
     def _report_harvest(self, response):
         # Surface the harvested AsyncAPI subscriptions, or the feature is

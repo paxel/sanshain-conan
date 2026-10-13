@@ -37,6 +37,79 @@ _RELEASE_BRANCHES_HINT = (
 )
 
 
+# Every field any Sanshain client knows, per level. A field known here but not
+# supported by this client is accepted silently; anything else is unknown.
+_KNOWN_TOP = {
+    "sanshainUrl",
+    "serviceName",
+    "clientName",
+    "compression",
+    "bestEffort",
+    "strict",
+    "force",
+    "insecure",
+    "combine",
+    "catalogInfo",
+    "provide",
+    "provides",
+    "requires",
+}
+_KNOWN_PROVIDE = {"file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine"}
+_KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpoints"}
+_KNOWN_ENDPOINT = {"method", "path"}
+
+
+def find_unknown_fields(data):
+    """Paths of the unknown fields in a parsed sanshain.yaml, in file order."""
+    found = []
+
+    def check(entry, known, prefix, nested):
+        # Depth-first in key order, so the paths come out as they appear in the file.
+        if not isinstance(entry, dict):
+            return
+        for key, value in entry.items():
+            if key not in known:
+                found.append(f"{prefix}{key}")
+            elif key in nested:
+                nested[key](value, f"{prefix}{key}")
+
+    def each(known, nested=None):
+        def walk(entries, path):
+            if isinstance(entries, list):
+                for i, entry in enumerate(entries):
+                    check(entry, known, f"{path}[{i}].", nested or {})
+
+        return walk
+
+    check(
+        data,
+        _KNOWN_TOP,
+        "",
+        {
+            "provide": lambda entry, path: check(entry, _KNOWN_PROVIDE, f"{path}.", {}),
+            "provides": each(_KNOWN_PROVIDE),
+            "requires": each(_KNOWN_REQUIRE, {"endpoints": each(_KNOWN_ENDPOINT)}),
+        },
+    )
+    return found
+
+
+def unknown_fields_message(fields, strict):
+    noun = "field" if len(fields) == 1 else "fields"
+    names = ", ".join(f"'{f}'" for f in fields)
+    verdict = "rejected (strict)" if strict else "ignored"
+    return f"sanshain.yaml: unknown {noun} {names} - {verdict}"
+
+
+def puzzled_cat(fields, strict):
+    """The three lines that report unknown fields, ending in `ignored` or `rejected (strict)`."""
+    return [
+        "   /\\_/\\  ?",
+        f"  ( O_o )   {unknown_fields_message(fields, strict)}",
+        " ---U-U---",
+    ]
+
+
 class SanshainConfig:
     def __init__(self, data):
         # SANSHAIN_URL beats the yaml's sanshainUrl: the service address is
@@ -53,6 +126,8 @@ class SanshainConfig:
         self.requires = data.get("requires", [])
 
         self._validate(data)
+        # After _validate: the legacy-field rejections error before any cat.
+        self.unknown_fields = find_unknown_fields(data)
 
     def _validate(self, data):
         if not self.sanshain_url:

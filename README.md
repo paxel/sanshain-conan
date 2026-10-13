@@ -66,6 +66,18 @@ Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `
 
 `sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
+### Unknown fields
+
+A field no Sanshain client knows — usually a typo — is reported once per run (CLI: on stderr; Conan helper: as warnings) and otherwise ignored:
+
+```
+   /\_/\  ?
+  ( O_o )   sanshain.yaml: unknown field 'catalogInf' - ignored
+ ---U-U---
+```
+
+With `strict: true` the same message ends in `rejected (strict)` and the command fails; `--best-effort` does not soften this. Fields other Sanshain clients support but this one does not (`force`, `insecure`, `combine`, `compression`) are accepted silently. The branch-era fields above keep failing with their migration hint.
+
 ## Environment
 
 -   `SANSHAIN_URL` overrides `sanshainUrl` from `sanshain.yaml` (and makes it optional there), so the service address can change without a commit.
@@ -235,6 +247,7 @@ When strict mode is enabled:
 - Missing `serviceName` → exit with error
 - No `provides` configured → exit with error
 - No `requires` configured → exit with error
+- An unknown field in `sanshain.yaml` → exit with error (see [Unknown fields](#unknown-fields))
 
 Note that a `requires` entry without a `version`, or any leftover branch-era field, is always a hard error — strict mode does not change that.
 

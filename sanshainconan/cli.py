@@ -4,7 +4,7 @@ import sys
 
 from .cache import SanshainCache
 from .client import SanshainClient, SanshainError, VersionConflictError, resolve_stream
-from .config import env_flag, load_config
+from .config import env_flag, load_config, puzzled_cat
 
 
 def resolve_stability(ga_flag=False):
@@ -68,6 +68,13 @@ def main():
                 config = SanshainConfig({"sanshainUrl": "http://localhost:8080"})
             else:
                 raise
+
+        if config.unknown_fields:
+            for line in puzzled_cat(config.unknown_fields, config.strict):
+                print(line, file=sys.stderr)
+            # A config error under strict: best-effort does not soften it.
+            if config.strict:
+                sys.exit(1)
 
         if args.best_effort:
             config.best_effort = True

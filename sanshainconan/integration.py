@@ -21,7 +21,7 @@ three are pipeline concerns and never live in `sanshain.yaml`.
 import os
 
 from .client import SanshainClient, resolve_stream
-from .config import env_flag, load_config
+from .config import ConfigError, env_flag, load_config, puzzled_cat, unknown_fields_message
 
 
 class Sanshain:
@@ -38,6 +38,11 @@ class Sanshain:
         # for config, provide and require, never the working directory.
         self.base_path = os.path.dirname(os.path.abspath(config_path))
         self.config = load_config(config_path)
+        if self.config.unknown_fields:
+            for line in puzzled_cat(self.config.unknown_fields, self.config.strict):
+                conanfile.output.warning(line)
+            if self.config.strict:
+                raise ConfigError(unknown_fields_message(self.config.unknown_fields, True))
         self.client = SanshainClient(self.config.sanshain_url)
         # Every provide is a snapshot unless the ga switch is set
         # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the

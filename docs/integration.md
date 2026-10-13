@@ -41,6 +41,8 @@ Initializes the helper.
 - `conanfile`: The current `ConanFile` instance (`self`).
 - `config_path`: Optional path to `sanshain.yaml`. Defaults to project root.
 
+An unknown field in `sanshain.yaml` (usually a typo) is reported as a warning; with `strict: true` the helper raises instead.
+
 Relative paths in `sanshain.yaml` (the spec `file`s, `outputDirectory`) resolve against the folder `sanshain.yaml` was loaded from; absolute paths stay absolute.
 
 ### `sanshain.provide()`

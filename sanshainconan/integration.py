@@ -22,7 +22,7 @@ import os
 
 from .catalog import run_catalog
 from .client import SanshainClient, SanshainError, resolve_stream
-from .config import ConfigError, env_flag, load_config, puzzled_cat, unknown_fields_message
+from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
 class Sanshain:
@@ -38,12 +38,18 @@ class Sanshain:
         # resolves against the folder the config was loaded from — one base
         # for config, provide and require, never the working directory.
         self.base_path = os.path.dirname(os.path.abspath(config_path))
-        self.config = load_config(config_path)
+        try:
+            self.config = load_config(config_path)
+        except ConfigError as e:
+            # The cat comes first, also when the config then fails (under
+            # strict, the unknown fields are the failure).
+            if e.unknown_fields:
+                for line in puzzled_cat(e.unknown_fields, e.strict):
+                    conanfile.output.warning(line)
+            raise
         if self.config.unknown_fields:
-            for line in puzzled_cat(self.config.unknown_fields, self.config.strict):
+            for line in puzzled_cat(self.config.unknown_fields, False):
                 conanfile.output.warning(line)
-            if self.config.strict:
-                raise ConfigError(unknown_fields_message(self.config.unknown_fields, True))
         self.client = SanshainClient(self.config.sanshain_url)
         # Every provide is a snapshot unless the ga switch is set
         # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the

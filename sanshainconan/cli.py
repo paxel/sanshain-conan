@@ -63,6 +63,13 @@ def main():
         try:
             config = load_config(args.config)
         except Exception as e:
+            # The cat comes first, also when the config then fails.
+            if isinstance(e, ConfigError) and e.unknown_fields:
+                for line in puzzled_cat(e.unknown_fields, e.strict):
+                    print(line, file=sys.stderr)
+                # Unknown fields under strict: best-effort does not soften it.
+                if e.strict:
+                    sys.exit(1)
             resolved_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
             if resolved_best_effort:
                 print(f"Warning loading config: {e}")
@@ -74,11 +81,8 @@ def main():
                 raise
 
         if config.unknown_fields:
-            for line in puzzled_cat(config.unknown_fields, config.strict):
+            for line in puzzled_cat(config.unknown_fields, False):
                 print(line, file=sys.stderr)
-            # A config error under strict: best-effort does not soften it.
-            if config.strict:
-                sys.exit(1)
 
         if args.best_effort:
             config.best_effort = True
@@ -329,7 +333,7 @@ def main():
 
     except Exception as e:
         print(f"Error: {e}")
-        if not config.best_effort:
+        if config is None or not config.best_effort:
             sys.exit(1)
         print("Continuing (best effort)")
 

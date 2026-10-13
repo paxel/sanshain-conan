@@ -4,7 +4,13 @@ import yaml
 
 
 class ConfigError(Exception):
-    pass
+    """sanshain.yaml is unusable. Carries the unknown fields found before the
+    failure, so the caller can show the cat ahead of the error."""
+
+    def __init__(self, message, unknown_fields=None, strict=False):
+        super().__init__(message)
+        self.unknown_fields = unknown_fields or []
+        self.strict = strict
 
 
 def env_flag(name):
@@ -126,15 +132,24 @@ class SanshainConfig:
         self.provides = data.get("provides", [])
         self.requires = data.get("requires", [])
 
-        self._validate(data)
-        # After _validate: the legacy-field rejections error before any cat.
+        # Order: legacy-field rejections, then unknown fields (the cat; under
+        # strict they fail here), then the remaining validation — so a typo
+        # that replaces a required field is named before the error it causes.
+        self._reject_legacy(data)
         self.unknown_fields = find_unknown_fields(data)
+        if self.unknown_fields and self.strict:
+            raise ConfigError(unknown_fields_message(self.unknown_fields, True), self.unknown_fields, strict=True)
+        try:
+            self._validate(data)
+        except ConfigError as e:
+            e.unknown_fields = self.unknown_fields
+            raise
 
-    def _validate(self, data):
-        if not self.sanshain_url:
-            raise ConfigError("Missing required field: sanshainUrl")
-
+    @staticmethod
+    def _reject_legacy(data):
         def reject_branch_era(entry, context, branch_hint):
+            if not isinstance(entry, dict):
+                return
             if "branch" in entry:
                 raise ConfigError(f"{context}: {branch_hint}")
             if "timeout" in entry:
@@ -145,9 +160,20 @@ class SanshainConfig:
                 raise ConfigError(f"{context}: {_RELEASE_BRANCHES_HINT}")
 
         reject_branch_era(data, "sanshain.yaml", _BRANCH_HINT_REQUIRE)
+        if data.get("provide"):
+            reject_branch_era(data["provide"], "provide", _BRANCH_HINT_PROVIDE)
+        for i, p in enumerate(data.get("provides") or []):
+            reject_branch_era(p, f"provides[{i}]", _BRANCH_HINT_PROVIDE)
+        for i, req in enumerate(data.get("requires") or []):
+            name = req.get("serviceName") if isinstance(req, dict) else None
+            context = f"requires[{i}] ({name})" if name else f"requires[{i}]"
+            reject_branch_era(req, context, _BRANCH_HINT_REQUIRE)
+
+    def _validate(self, data):
+        if not self.sanshain_url:
+            raise ConfigError("Missing required field: sanshainUrl")
 
         def validate_provide(p, context):
-            reject_branch_era(p, context, _BRANCH_HINT_PROVIDE)
             # A retired entry names its family via apiType alone: the project
             # no longer provides it, so demanding a spec file would force a
             # dead file to stay on disk forever.
@@ -169,7 +195,6 @@ class SanshainConfig:
                 raise ConfigError("Missing required field in require entry: serviceName")
             name = req["serviceName"]
             context = f"requires[{i}] ({name})"
-            reject_branch_era(req, context, _BRANCH_HINT_REQUIRE)
             if "version" not in req:
                 raise ConfigError(
                     f"{context}: missing 'version' — Sanshain 2.0 pins exact versions; "

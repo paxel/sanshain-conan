@@ -158,16 +158,54 @@ class TestCliCat(CliTestCase):
 
     def test_legacy_field_still_errors_without_a_cat(self):
         self.write(BASE + "timeout: 30\ncatalogInf: c.yaml\n" + REQUIRES)
-        with self.assertRaisesRegex(ConfigError, "'timeout' is no longer supported"):
-            load_config(self.config_file)
-        # The CLI fails on it (its own error path), and no cat is shown first.
-        err = io.StringIO()
-        with contextlib.redirect_stderr(err):
-            with self.assertRaises((SystemExit, Exception)):
-                with mock.patch("sys.argv", ["sanshain-conan", "--config", self.config_file, "require"]):
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        main()
-        self.assertNotIn("O_o", err.getvalue())
+        code, out, err, _ = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertIn("Error: sanshain.yaml: 'timeout' is no longer supported", out)
+        self.assertNotIn("Traceback", out + err)
+        self.assertNotIn("O_o", err + out)
+
+    def test_a_typo_replacing_a_required_field_shows_the_cat_then_the_error(self):
+        cases = [
+            (
+                BASE + "provide:\n  fiel: a.yaml\n",
+                "provide.fiel",
+                "At least one of file, openApiFile, asyncApiFile, or protoFile must be specified in provide",
+            ),
+            (
+                BASE + REQUIRES.replace("outputDirectory:", "outputDirectroy:"),
+                "requires[0].outputDirectroy",
+                "Missing required field in require entry: outputDirectory",
+            ),
+            (
+                BASE + REQUIRES.replace("version:", "verison:"),
+                "requires[0].verison",
+                "requires[0] (a): missing 'version'",
+            ),
+        ]
+        for text, field, error in cases:
+            with self.subTest(field=field):
+                self.write(text)
+                code, out, err, client_cls = self.run_cli()
+                self.assertEqual(code, 1)
+                self.assertEqual(err, cat(f"sanshain.yaml: unknown field '{field}' - ignored"))
+                self.assertIn(f"Error: {error}", out)
+                client_cls.return_value.require.assert_not_called()
+
+    def test_best_effort_shows_the_cat_then_continues(self):
+        self.write(BASE + "provide:\n  fiel: a.yaml\n")
+        code, out, err, _ = self.run_cli("--best-effort")
+        self.assertEqual(code, 0)
+        self.assertEqual(err, cat("sanshain.yaml: unknown field 'provide.fiel' - ignored"))
+        self.assertIn("Warning loading config: At least one of file", out)
+
+    def test_strict_fails_on_the_unknown_field_before_other_validation(self):
+        self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))
+        for extra in ((), ("--best-effort",)):
+            with self.subTest(extra=extra):
+                code, out, err, _ = self.run_cli(*extra)
+                self.assertEqual(code, 1)
+                self.assertEqual(err, cat("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)"))
+                self.assertNotIn("missing 'version'", out)
 
     def test_known_but_unsupported_field_gives_no_cat(self):
         self.write(BASE + "insecure: true\nforce: true\ncombine: true\n" + REQUIRES)
@@ -209,6 +247,21 @@ class TestHelperCat(unittest.TestCase):
                 Sanshain(self.conanfile)
         self.assertEqual(str(ctx.exception), "sanshain.yaml: unknown field 'provides[1].verison' - rejected (strict)")
         self.assertEqual(self.warnings(), puzzled_cat(["provides[1].verison"], True))
+
+    def test_a_typo_replacing_a_required_field_shows_the_cat_then_raises(self):
+        self.write(BASE + "provide:\n  fiel: a.yaml\n")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ConfigError, "At least one of file"):
+                Sanshain(self.conanfile)
+        self.assertEqual(self.warnings(), puzzled_cat(["provide.fiel"], False))
+
+    def test_strict_raises_on_the_unknown_field_before_other_validation(self):
+        self.write(BASE + "strict: true\nprovide:\n  fiel: a.yaml\n")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ConfigError) as ctx:
+                Sanshain(self.conanfile)
+        self.assertEqual(str(ctx.exception), "sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)")
+        self.assertEqual(self.warnings(), puzzled_cat(["provide.fiel"], True))
 
     def test_legacy_field_still_errors_without_a_cat(self):
         self.write(BASE + "releaseBranches: [main]\ncatalogInf: c.yaml\n")

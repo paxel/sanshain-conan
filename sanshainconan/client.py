@@ -3,6 +3,8 @@ import string
 
 import requests
 
+from .config import env_flag
+
 HTTP_TIMEOUT = 30
 
 
@@ -51,7 +53,7 @@ def resolve_stream(trunk_flag=False, tag=None):
     would answer 400 and naming the misconfiguration locally beats a round
     trip.
     """
-    trunk = trunk_flag or os.environ.get("SANSHAIN_TRUNK") in ("true", "1")
+    trunk = trunk_flag or env_flag("SANSHAIN_TRUNK")
     resolved_tag = (tag or os.environ.get("SANSHAIN_TAG") or "").strip() or None
     if trunk and resolved_tag:
         raise SanshainError(

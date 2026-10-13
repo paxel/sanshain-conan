@@ -4,13 +4,13 @@ import sys
 
 from .cache import SanshainCache
 from .client import SanshainClient, SanshainError, VersionConflictError, resolve_stream
-from .config import load_config
+from .config import env_flag, load_config
 
 
 def resolve_stability(ga_flag=False):
     """Every provide is a snapshot unless the ga switch is set explicitly:
-    the --ga flag or the environment variable SANSHAIN_GA=true."""
-    if ga_flag or os.environ.get("SANSHAIN_GA") == "true":
+    the --ga flag or the environment variable SANSHAIN_GA=true (or 1)."""
+    if ga_flag or env_flag("SANSHAIN_GA"):
         return "ga"
     return "snapshot"
 
@@ -59,7 +59,7 @@ def main():
         try:
             config = load_config(args.config)
         except Exception as e:
-            resolved_best_effort = args.best_effort or os.environ.get("SANSHAIN_BEST_EFFORT") == "true"
+            resolved_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
             if resolved_best_effort:
                 print(f"Warning loading config: {e}")
                 # Create a minimal config object
@@ -71,7 +71,7 @@ def main():
 
         if args.best_effort:
             config.best_effort = True
-        elif os.environ.get("SANSHAIN_BEST_EFFORT") == "true":
+        elif env_flag("SANSHAIN_BEST_EFFORT"):
             config.best_effort = True
 
         client = SanshainClient(config.sanshain_url, insecure=args.insecure)

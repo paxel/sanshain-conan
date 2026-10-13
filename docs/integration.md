@@ -54,6 +54,12 @@ Reads the `requires` section from `sanshain.yaml` and downloads the specificatio
 ### Authentication
 Ensure the `SANSHAIN_TOKEN` environment variable is set in your CI pipeline.
 
+### Service URL
+`SANSHAIN_URL` overrides `sanshainUrl` from `sanshain.yaml`.
+
+### Switches
+`SANSHAIN_GA` and `SANSHAIN_TRUNK` (and `SANSHAIN_BEST_EFFORT` for the CLI) are on for `true` or `1`, trimmed and case-insensitive; any other value is off.
+
 ### Stability (the ga switch)
 Every provide is a `snapshot` by default. Release pipelines mark their provides as `ga` by setting the switch explicitly:
 

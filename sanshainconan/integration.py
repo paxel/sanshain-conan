@@ -21,7 +21,7 @@ three are pipeline concerns and never live in `sanshain.yaml`.
 import os
 
 from .client import SanshainClient, resolve_stream
-from .config import load_config
+from .config import env_flag, load_config
 
 
 class Sanshain:
@@ -42,7 +42,7 @@ class Sanshain:
         # Every provide is a snapshot unless the ga switch is set
         # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the
         # whole mechanism.
-        self.stability = "ga" if os.environ.get("SANSHAIN_GA") == "true" else "snapshot"
+        self.stability = "ga" if env_flag("SANSHAIN_GA") else "snapshot"
         self.trunk, self.tag = resolve_stream()
 
     def provide(self):

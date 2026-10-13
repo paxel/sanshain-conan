@@ -7,6 +7,16 @@ class ConfigError(Exception):
     pass
 
 
+def env_flag(name):
+    """A SANSHAIN_* boolean switch: trimmed, case-insensitive `true` or `1` is on, anything else off."""
+    return (os.environ.get(name) or "").strip().lower() in ("true", "1")
+
+
+def env_url():
+    """SANSHAIN_URL, or None when unset or blank."""
+    return (os.environ.get("SANSHAIN_URL") or "").strip() or None
+
+
 _BRANCH_HINT_REQUIRE = (
     "'branch' is no longer supported — the branch model was removed in Sanshain 2.0; "
     "replace with an exact 'version' pin"
@@ -29,7 +39,9 @@ _RELEASE_BRANCHES_HINT = (
 
 class SanshainConfig:
     def __init__(self, data):
-        self.sanshain_url = data.get("sanshainUrl")
+        # SANSHAIN_URL beats the yaml's sanshainUrl: the service address is
+        # an environment concern and moves without a commit.
+        self.sanshain_url = env_url() or data.get("sanshainUrl")
         self.service_name = data.get("serviceName", data.get("clientName"))
         self.client_name = self.service_name  # alias
         self.compression = data.get("compression", False)

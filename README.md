@@ -66,6 +66,12 @@ Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `
 
 `sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
+## Environment
+
+-   `SANSHAIN_URL` overrides `sanshainUrl` from `sanshain.yaml` (and makes it optional there), so the service address can change without a commit.
+-   `SANSHAIN_TOKEN` is sent as the Bearer token.
+-   The switches `SANSHAIN_GA`, `SANSHAIN_TRUNK` and `SANSHAIN_BEST_EFFORT` are on for `true` or `1` (trimmed, case-insensitive); any other value — `yes`, `on`, empty — is off. A CLI flag (`--ga`, `--trunk`, `--best-effort`) turns a switch on regardless of the environment.
+
 ## Streams: trunk and release branches
 
 Alongside stability, the pipeline declares which dependency graph its calls belong to. Like the

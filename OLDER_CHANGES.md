@@ -35,7 +35,7 @@ For recent changes, see [CHANGELOG.md](CHANGELOG.md).
 
 ### Removed
 - Branch detection from git and CI variables, and `SANSHAIN_BRANCH`.
-- The `branch`, `timeout`, `baseVersion` and `releaseBranches` fields; they are rejected with a migration hint.
+- The `branch`, `timeout` and `baseVersion` fields; they are rejected with a migration hint (as is `releaseBranches`).
 - The CLI's skip of unchanged spec files on provide.
 
 ### Fixed

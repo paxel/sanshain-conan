@@ -41,6 +41,8 @@ Initializes the helper.
 - `conanfile`: The current `ConanFile` instance (`self`).
 - `config_path`: Optional path to `sanshain.yaml`. Defaults to project root.
 
+Relative paths in `sanshain.yaml` (the spec `file`s, `outputDirectory`) resolve against the folder `sanshain.yaml` was loaded from; absolute paths stay absolute.
+
 ### `sanshain.provide()`
 Reads the `provide` section from `sanshain.yaml` and uploads the specification to the Sanshain service. The version is read from the spec file itself (`info.version`, or the `// sanshain-version:` comment for proto); the stability is `snapshot` unless `SANSHAIN_GA=true` is set.
 

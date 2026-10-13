@@ -62,6 +62,8 @@ requires:
         path: /api/v1/user
 ```
 
+Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`) resolves against the folder that contains `sanshain.yaml`, never the working directory; absolute paths stay absolute. A config passed via `--config` (CLI) or `config_path` (Conan helper) therefore finds the same files as one in the current folder.
+
 `sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
 ## Streams: trunk and release branches

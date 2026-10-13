@@ -27,12 +27,16 @@ from .config import load_config
 class Sanshain:
     def __init__(self, conanfile, config_path=None):
         self.conanfile = conanfile
-        # Resolve config path relative to the project root (where
-        # sanshain.yaml is expected); base_folder is usually the project root
-        # in Conan 2.
-        base_path = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.base_folder
-        config_path = config_path or os.path.join(base_path, "sanshain.yaml")
+        # Without an explicit config_path, sanshain.yaml is expected in the
+        # project root; base_folder is usually the project root in Conan 2.
+        if not config_path:
+            root = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.base_folder
+            config_path = os.path.join(root, "sanshain.yaml")
 
+        # Every relative path in sanshain.yaml (file, outputDirectory, ...)
+        # resolves against the folder the config was loaded from — one base
+        # for config, provide and require, never the working directory.
+        self.base_path = os.path.dirname(os.path.abspath(config_path))
         self.config = load_config(config_path)
         self.client = SanshainClient(self.config.sanshain_url)
         # Every provide is a snapshot unless the ga switch is set
@@ -52,10 +56,9 @@ class Sanshain:
             return
 
         provided = False
-        base_path = self.conanfile.recipe_folder or self.conanfile.base_folder
 
         def do_provide(file_path, api_type):
-            full_path = os.path.join(base_path, file_path)
+            full_path = os.path.join(self.base_path, file_path)
             if not os.path.exists(full_path):
                 self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 if not self.config.best_effort:
@@ -149,8 +152,7 @@ class Sanshain:
             version = req["version"]
             api_type = req.get("apiType")
 
-            # Resolve output_dir relative to project root
-            base_output = os.path.join(self.conanfile.export_sources_folder or self.conanfile.base_folder, output_dir)
+            base_output = os.path.join(self.base_path, output_dir)
             os.makedirs(base_output, exist_ok=True)
 
             self.conanfile.output.info(

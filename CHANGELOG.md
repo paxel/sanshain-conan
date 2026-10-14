@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - `require` writes the downloaded spec byte for byte: no newline translation on Windows, and non-ASCII characters are no longer garbled when the server names no charset.
-- Spec files are read as UTF-8 regardless of the system locale, and a leading UTF-8 BOM is stripped before upload.
+- Spec, config (`sanshain.yaml`) and catalog files are read as UTF-8 regardless of the system locale, and a leading UTF-8 BOM is stripped.
 
 ---
 

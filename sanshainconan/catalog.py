@@ -26,7 +26,7 @@ def run_catalog(config, client, base_path, trunk, info, warn):
 
     path = os.path.join(base_path, config.catalog_info)
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
             content = f.read()
     except OSError as e:
         raise SanshainError(f"Cannot read catalogInfo file {path}: {e.strerror or e}")

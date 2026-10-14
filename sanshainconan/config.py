@@ -217,7 +217,7 @@ def load_config(path):
         raise ConfigError(f"Config file not found: {path}")
 
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
             data = yaml.safe_load(f)
             if data is None:
                 raise ConfigError(f"Config file is empty: {path}")

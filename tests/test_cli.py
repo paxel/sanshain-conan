@@ -149,7 +149,12 @@ class TestCliRequire(unittest.TestCase):
 
     def test_require_passes_pinned_version(self):
         client = mock.Mock()
-        client.require.return_value = {"not_modified": False, "content": "openapi: 3.0.0", "etag": '"e1"'}
+        client.require.return_value = {
+            "not_modified": False,
+            "content": "openapi: 3.0.0",
+            "body": b"openapi: 3.0.0",
+            "etag": '"e1"',
+        }
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch("sanshainconan.cli.SanshainClient", return_value=client):

@@ -215,11 +215,11 @@ class Sanshain:
                         fmt=fmt,
                     )
 
-                content = result["content"]
                 ext = "proto" if api_type == "proto" else "yaml"
                 output_file = os.path.join(base_output, f"{service_name}.{ext}")
-                with open(output_file, "w") as f:
-                    f.write(content)
+                # Binary: the server's bytes as they are, no newline translation.
+                with open(output_file, "wb") as f:
+                    f.write(result["body"])
                 self.conanfile.output.info(f"Sanshain: Saved to {output_file}")
             except Exception as e:
                 self.conanfile.output.error(f"Sanshain: Error requiring {service_name}: {e}")

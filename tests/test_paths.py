@@ -67,7 +67,12 @@ class PathsTestCase(unittest.TestCase):
     def client(self):
         client = mock.Mock()
         client.provide.return_value = {"version": "1.2.0", "stability": "snapshot", "changes": {}}
-        client.require.return_value = {"not_modified": False, "content": "openapi: 3.0.0", "etag": None}
+        client.require.return_value = {
+            "not_modified": False,
+            "content": "openapi: 3.0.0",
+            "body": b"openapi: 3.0.0",
+            "etag": None,
+        }
         return client
 
 

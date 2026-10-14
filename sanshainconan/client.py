@@ -298,7 +298,8 @@ class SanshainClient:
         self._handle_response(response, producer_name)
         self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
-        return {"not_modified": False, "content": response.text, "etag": response_etag}
+        # `body` is the answer byte for byte; it is what gets written to disk.
+        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
 
     def require(
         self,
@@ -344,7 +345,8 @@ class SanshainClient:
         self._handle_response(response, producer_name)
         self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
-        return {"not_modified": False, "content": response.text, "etag": response_etag}
+        # `body` is the answer byte for byte; it is what gets written to disk.
+        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
 
     def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo"):
         """Record the system's periphery from its Backstage catalog-info.yaml (PUT /catalog/<system>).

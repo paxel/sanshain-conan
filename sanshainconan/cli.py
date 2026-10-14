@@ -143,7 +143,7 @@ def main():
                         raise SanshainError(f"File not found: {full_path}")
                     return False
 
-                with open(full_path, "r") as f:
+                with open(full_path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
                     content = f.read()
                 effective_type = api_type or "openapi"
 

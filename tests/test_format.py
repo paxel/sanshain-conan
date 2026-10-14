@@ -117,6 +117,49 @@ class TestFormatOnTheWire(unittest.TestCase):
         )
 
 
+class TestOldServerRejectsFormat(unittest.TestCase):
+    REJECTED = "Failed to deserialize query string: unknown field `format`, expected one of `consumername`"
+
+    def require(self):
+        return SanshainClient("http://x").require("c", "events", "1.0.0", "p", "PUB", "asyncapi", fmt="openapi")
+
+    @mock.patch("requests.get")
+    def test_400_from_a_2_3_server_needs_2_4(self, mock_get):
+        mock_get.side_effect = [make_response(400, text=self.REJECTED), make_response(200, {"version": "2.3.0"})]
+        with self.assertRaises(SanshainError) as ctx:
+            self.require()
+        self.assertEqual(str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)")
+
+    @mock.patch("requests.get")
+    def test_400_with_unknown_server_version(self, mock_get):
+        mock_get.side_effect = [make_response(400, text=self.REJECTED.upper()), requests.ConnectionError("down")]
+        with self.assertRaises(SanshainError) as ctx:
+            self.require()
+        self.assertEqual(
+            str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)"
+        )
+
+    @mock.patch("requests.get")
+    def test_400_from_a_2_4_server_passes_through(self, mock_get):
+        error = "cannot convert to format openapi: message payload is Avro"
+        mock_get.side_effect = [
+            make_response(400, {"error": error}, text=error),
+            make_response(200, {"version": "2.4.0"}),
+            make_response(200, {"version": "2.4.0"}),
+        ]
+        with self.assertRaises(SanshainError) as ctx:
+            self.require()
+        self.assertIn(error, str(ctx.exception))
+        self.assertNotIn("needs Sanshain Service", str(ctx.exception))
+
+    @mock.patch("requests.get")
+    def test_400_without_format_is_unchanged(self, mock_get):
+        mock_get.side_effect = [make_response(400, text=self.REJECTED), make_response(200, {"version": "2.3.0"})]
+        with self.assertRaises(SanshainError) as ctx:
+            SanshainClient("http://x").require("c", "events", "1.0.0", "p", "PUB", "asyncapi")
+        self.assertIn("status 400", str(ctx.exception))
+
+
 class TestEtagPerFormat(unittest.TestCase):
     def test_keys_differ_by_format(self):
         self.assertNotEqual(
@@ -218,6 +261,21 @@ class TestCliFormat(FormatProject):
         self.assertIn("Continuing (best effort)", out)
         self.assertFalse(os.path.exists(os.path.join(self.folder, "gen", "events.yaml")))
         self.assertEqual(SanshainCache().state["requires"], {})
+
+    def test_best_effort_warns_on_an_old_server_400(self):
+        config_file = self.write_config([entry(apiType="asyncapi", format="openapi")])
+        code, out, _, _ = self.run_cli(
+            config_file,
+            "--best-effort",
+            get=[
+                make_response(400, text="unknown field `format`"),
+                make_response(200, {"version": "2.3.0"}),
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)", out)
+        self.assertIn("Continuing (best effort)", out)
+        self.assertFalse(os.path.exists(os.path.join(self.folder, "gen", "events.yaml")))
 
 
 class TestHelperFormat(FormatProject):

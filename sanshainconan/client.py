@@ -20,14 +20,19 @@ def sanitize(text):
     return "".join(c if c in printable else "?" for c in text)
 
 
-def _is_pre_2(version_str):
+def _parse_version(version_str):
     try:
         parts = [int(p) for p in str(version_str).strip().split(".")[:3]]
     except ValueError:
-        return False
+        return None
     while len(parts) < 3:
         parts.append(0)
-    return tuple(parts) < (2, 0, 0)
+    return tuple(parts)
+
+
+def _is_pre_2(version_str):
+    parts = _parse_version(version_str)
+    return parts is not None and parts < (2, 0, 0)
 
 
 def normalize_line_endings(content):
@@ -251,9 +256,23 @@ class SanshainClient:
             doc = None
         if isinstance(doc, dict) and "openapi" in doc:
             return
-        version = self.get_server_version()
+        self._raise_format_needs_2_4(fmt, self.get_server_version())
+
+    @staticmethod
+    def _raise_format_needs_2_4(fmt, version):
         server = f"server is {version}" if version else "server version unknown"
         raise SanshainError(f"format: {fmt} needs Sanshain Service 2.4.0 or later ({server})")
+
+    def _check_format_rejected(self, response, fmt):
+        """A service older than 2.4.0 rejects the unknown `format` query
+        parameter with 400; name that instead of the raw 400. A 2.4.0+
+        service's own 400 passes through unchanged."""
+        if not fmt or response.status_code != 400 or "format" not in (response.text or "").lower():
+            return
+        version = self.get_server_version()
+        parsed = _parse_version(version) if version else None
+        if parsed is None or parsed < (2, 4, 0):
+            self._raise_format_needs_2_4(fmt, version)
 
     def require_bundle(
         self,
@@ -295,6 +314,7 @@ class SanshainClient:
         )
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
+        self._check_format_rejected(response, fmt)
         self._handle_response(response, producer_name)
         self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
@@ -342,6 +362,7 @@ class SanshainClient:
         response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT)
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
+        self._check_format_rejected(response, fmt)
         self._handle_response(response, producer_name)
         self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")

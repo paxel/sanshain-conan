@@ -102,7 +102,7 @@ requires:
         path: user/signup
 ```
 
-`format` needs Sanshain Service 2.4.0 or later. An older service ignores it and answers AsyncAPI, which fails with `format: openapi needs Sanshain Service 2.4.0 or later (server is <version>)` (a warning with best-effort, and nothing is written).
+`format` needs Sanshain Service 2.4.0 or later. An older service rejects the single-endpoint request or returns AsyncAPI; the client reports that it needs 2.4.0. The message is `format: openapi needs Sanshain Service 2.4.0 or later (server is <version>)` (a warning with best-effort, and nothing is written).
 
 ### Unknown fields
 

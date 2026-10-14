@@ -40,9 +40,13 @@ class SanshainCache:
         self.state["requires"][key] = {"etag": etag, "last_fetched": datetime.now(timezone.utc).isoformat()}
 
     @staticmethod
-    def require_key(service_name, version, method, path):
-        return f"{service_name}|{version}|{method}|{path}"
+    def require_key(service_name, version, method, path, fmt=None):
+        # The format is part of the key, so the AsyncAPI and the OpenAPI
+        # rendering of the same pin never share an ETag.
+        key = f"{service_name}|{version}|{method}|{path}"
+        return f"{key}|format={fmt}" if fmt else key
 
     @staticmethod
-    def require_bundle_key(service_name, version):
-        return f"{service_name}|{version}|bundle"
+    def require_bundle_key(service_name, version, fmt=None):
+        key = f"{service_name}|{version}|bundle"
+        return f"{key}|format={fmt}" if fmt else key

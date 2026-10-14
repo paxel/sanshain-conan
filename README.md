@@ -68,6 +68,42 @@ Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `
 
 `sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
+### `requires` entry fields
+
+| Field             | Required | Description                                                                                   |
+|-------------------|----------|-----------------------------------------------------------------------------------------------|
+| `serviceName`     | yes      | The Producer to require from.                                                                 |
+| `version`         | yes      | Exact pin, `MAJOR.MINOR.PATCH`.                                                               |
+| `outputDirectory` | yes      | Where the spec is written, relative to `sanshain.yaml`.                                       |
+| `endpoints`       | yes      | `method` + `path` pairs; several are downloaded as one bundle.                                |
+| `apiType`         | no       | `openapi` (default), `asyncapi` or `proto`.                                                   |
+| `format`          | no       | Only `openapi`, only with `apiType: asyncapi`: the AsyncAPI answer converted to OpenAPI.      |
+
+### AsyncAPI as OpenAPI (`format`)
+
+`format: openapi` on an `apiType: asyncapi` entry asks Sanshain for the required channels as an OpenAPI document, for generators that only speak OpenAPI. It is the only conversion; any other `format` value or `apiType` is a configuration error. The file keeps its usual name (`<serviceName>.yaml`), so to get both formats list the entry twice with different `outputDirectory`s:
+
+```yaml
+requires:
+  - serviceName: "notifier"
+    apiType: asyncapi
+    version: "1.2.0"
+    outputDirectory: "generated/asyncapi"
+    endpoints:
+      - method: PUB
+        path: user/signup
+  - serviceName: "notifier"
+    apiType: asyncapi
+    format: openapi
+    version: "1.2.0"
+    outputDirectory: "generated/openapi"
+    endpoints:
+      - method: PUB
+        path: user/signup
+```
+
+`format` needs Sanshain Service 2.4.0 or later. An older service ignores it and answers AsyncAPI, which fails with `format: openapi needs Sanshain Service 2.4.0 or later (server is <version>)` (a warning with best-effort, and nothing is written).
+
 ### Unknown fields
 
 A field no Sanshain client knows — usually a typo — is reported once per run (CLI: on stderr; Conan helper: as warnings) and otherwise ignored:

@@ -51,6 +51,8 @@ Reads the `provide` section from `sanshain.yaml` and uploads the specification t
 ### `sanshain.require()`
 Reads the `requires` section from `sanshain.yaml` and downloads the specifications at each entry's pinned `version` to the specified output directories.
 
+An `apiType: asyncapi` entry with `format: openapi` downloads the channels as an OpenAPI document instead, under the same file name (list the entry twice with different `outputDirectory`s for both formats). `format` accepts only `openapi`, only with `apiType: asyncapi`, and needs Sanshain Service 2.4.0 or later.
+
 ### `sanshain.catalog()`
 Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A rejected push raises — a `400` usually means the Component's `metadata.name` is not the `serviceName` — or only warns with `bestEffort: true`. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
 

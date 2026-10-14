@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `catalog` command (`sanshain-conan catalog`, or `Sanshain(self).catalog()` in a conanfile) pushes the Backstage `catalog-info.yaml` named by the new `catalogInfo` field in `sanshain.yaml` to Sanshain. `catalog` requires Sanshain Service 2.4.0; all other commands work with any 2.x service.
 - `SANSHAIN_URL` overrides `sanshainUrl` from `sanshain.yaml`, which may then be omitted.
+- `format: openapi` on an `apiType: asyncapi` requires entry downloads the AsyncAPI channels as an OpenAPI document; needs Sanshain Service 2.4.0.
 - Unknown fields in `sanshain.yaml` (usually typos) are reported by name and ignored; with `strict: true` they fail the command.
 
 ### Changed

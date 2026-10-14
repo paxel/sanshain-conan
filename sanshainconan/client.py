@@ -3,6 +3,7 @@ import string
 from urllib.parse import quote
 
 import requests
+import yaml
 
 from .config import env_flag
 
@@ -239,8 +240,32 @@ class SanshainClient:
         except ValueError:
             return None
 
+    def _check_format(self, response, fmt):
+        """With format: openapi the answer must be an OpenAPI document; an
+        older service ignores the parameter and answers AsyncAPI."""
+        if not fmt:
+            return
+        try:
+            doc = yaml.safe_load(response.text)
+        except yaml.YAMLError:
+            doc = None
+        if isinstance(doc, dict) and "openapi" in doc:
+            return
+        version = self.get_server_version()
+        server = f"server is {version}" if version else "server version unknown"
+        raise SanshainError(f"format: {fmt} needs Sanshain Service 2.4.0 or later ({server})")
+
     def require_bundle(
-        self, consumer_name, producer_name, version, endpoints, api_type=None, etag=None, trunk=False, tag=None
+        self,
+        consumer_name,
+        producer_name,
+        version,
+        endpoints,
+        api_type=None,
+        etag=None,
+        trunk=False,
+        tag=None,
+        fmt=None,
     ):
         # The bundle endpoint reads the stream from the body — its handler has
         # no query extractor, so query parameters would be silently dropped and
@@ -261,16 +286,32 @@ class SanshainClient:
         if etag:
             headers["If-None-Match"] = etag
         response = requests.post(
-            f"{self.url}/require-bundle", json=payload, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT
+            f"{self.url}/require-bundle",
+            json=payload,
+            params={"format": fmt} if fmt else None,
+            headers=headers,
+            verify=self.verify,
+            timeout=HTTP_TIMEOUT,
         )
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response, producer_name)
+        self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
         return {"not_modified": False, "content": response.text, "etag": response_etag}
 
     def require(
-        self, consumer_name, producer_name, version, path, method, api_type=None, etag=None, trunk=False, tag=None
+        self,
+        consumer_name,
+        producer_name,
+        version,
+        path,
+        method,
+        api_type=None,
+        etag=None,
+        trunk=False,
+        tag=None,
+        fmt=None,
     ):
         # Unlike the bundle, the single-endpoint require reads its stream from
         # the query string.
@@ -285,6 +326,8 @@ class SanshainClient:
             trunk,
             tag,
         )
+        if fmt:
+            params["format"] = fmt
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
         if etag:
@@ -299,6 +342,7 @@ class SanshainClient:
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
         self._handle_response(response, producer_name)
+        self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
         return {"not_modified": False, "content": response.text, "etag": response_etag}
 

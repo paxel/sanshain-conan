@@ -179,6 +179,7 @@ class Sanshain:
             endpoints = req["endpoints"]
             version = req["version"]
             api_type = req.get("apiType")
+            fmt = req.get("format")
 
             base_output = os.path.join(self.base_path, output_dir)
             os.makedirs(base_output, exist_ok=True)
@@ -198,6 +199,7 @@ class Sanshain:
                         api_type,
                         trunk=self.trunk,
                         tag=self.tag,
+                        fmt=fmt,
                     )
                 else:
                     ep = endpoints[0]
@@ -210,6 +212,7 @@ class Sanshain:
                         api_type,
                         trunk=self.trunk,
                         tag=self.tag,
+                        fmt=fmt,
                     )
 
                 content = result["content"]

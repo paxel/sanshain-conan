@@ -265,6 +265,7 @@ def main():
                 endpoints = req["endpoints"]
                 version = req["version"]
                 api_type = req.get("apiType")
+                fmt = req.get("format")
 
                 # Resolve relative to config file location
                 config_dir = os.path.dirname(os.path.abspath(args.config))
@@ -278,7 +279,7 @@ def main():
 
                 try:
                     if len(endpoints) > 1:
-                        cache_key = SanshainCache.require_bundle_key(service_name, version)
+                        cache_key = SanshainCache.require_bundle_key(service_name, version, fmt)
                         cached_entry = cache.get_require_entry(cache_key)
                         cached_etag = cached_entry.get("etag") if cached_entry else None
 
@@ -291,10 +292,11 @@ def main():
                             cached_etag,
                             trunk=trunk,
                             tag=tag,
+                            fmt=fmt,
                         )
                     else:
                         ep = endpoints[0]
-                        cache_key = SanshainCache.require_key(service_name, version, ep["method"], ep["path"])
+                        cache_key = SanshainCache.require_key(service_name, version, ep["method"], ep["path"], fmt)
                         cached_entry = cache.get_require_entry(cache_key)
                         cached_etag = cached_entry.get("etag") if cached_entry else None
 
@@ -308,6 +310,7 @@ def main():
                             cached_etag,
                             trunk=trunk,
                             tag=tag,
+                            fmt=fmt,
                         )
 
                     if result.get("not_modified"):

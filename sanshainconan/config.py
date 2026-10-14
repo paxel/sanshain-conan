@@ -61,7 +61,7 @@ _KNOWN_TOP = {
     "requires",
 }
 _KNOWN_PROVIDE = {"file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine"}
-_KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpoints"}
+_KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpoints", "format"}
 _KNOWN_ENDPOINT = {"method", "path"}
 
 
@@ -205,6 +205,11 @@ class SanshainConfig:
                 raise ConfigError("Missing required field in require entry: outputDirectory")
             if "endpoints" not in req:
                 raise ConfigError("Missing required field in require entry: endpoints")
+            if "format" in req and (req["format"] != "openapi" or req.get("apiType") != "asyncapi"):
+                raise ConfigError(
+                    f"{context}: format {req['format']!r} with apiType {req.get('apiType') or 'openapi'!r} "
+                    "is not supported; the only combination is apiType: asyncapi with format: openapi"
+                )
 
 
 def load_config(path):

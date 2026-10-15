@@ -21,7 +21,7 @@ three are pipeline concerns and never live in `sanshain.yaml`.
 import os
 
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, resolve_stream
+from .client import SanshainClient, SanshainError, StrictError, resolve_stream
 from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
@@ -50,12 +50,32 @@ class Sanshain:
         if self.config.unknown_fields:
             for line in puzzled_cat(self.config.unknown_fields, False):
                 conanfile.output.warning(line)
-        self.client = SanshainClient(self.config.sanshain_url)
+        # Every Sanshain-Warning header is a warning; under strict it fails the call.
+        self.client = SanshainClient(self.config.sanshain_url, on_warning=self._warn, strict=self.config.strict)
         # Every provide is a snapshot unless the ga switch is set
         # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the
         # whole mechanism.
         self.stability = "ga" if env_flag("SANSHAIN_GA") else "snapshot"
-        self.trunk, self.tag = resolve_stream()
+        try:
+            self.trunk, self.tag = resolve_stream(strict=self.config.strict, warn=self._warn)
+        except StrictError as e:
+            conanfile.output.error(f"Sanshain: {e}")
+            raise
+
+    def _warn(self, text):
+        self.conanfile.output.warning(f"Sanshain: {text}")
+
+    def _call(self, fn, *args, **kwargs):
+        """A client call; a strict failure is logged (after the call's own
+        error, if it failed too) before it propagates, since Conan shows only
+        the exception text."""
+        try:
+            return fn(*args, **kwargs)
+        except StrictError as e:
+            if e.error is not None:
+                self.conanfile.output.error(f"Sanshain: {e.error}")
+            self.conanfile.output.error(f"Sanshain: {e}")
+            raise
 
     def provide(self):
         provides = []
@@ -86,16 +106,31 @@ class Sanshain:
             )
 
             if effective_type == "openapi":
-                response = self.client.provide(
-                    self.config.service_name, content, self.stability, trunk=self.trunk, tag=self.tag
+                response = self._call(
+                    self.client.provide,
+                    self.config.service_name,
+                    content,
+                    self.stability,
+                    trunk=self.trunk,
+                    tag=self.tag,
                 )
             elif effective_type == "asyncapi":
-                response = self.client.provide_asyncapi(
-                    self.config.service_name, content, self.stability, trunk=self.trunk, tag=self.tag
+                response = self._call(
+                    self.client.provide_asyncapi,
+                    self.config.service_name,
+                    content,
+                    self.stability,
+                    trunk=self.trunk,
+                    tag=self.tag,
                 )
             elif effective_type == "proto" or effective_type == "grpc":
-                response = self.client.provide_proto(
-                    self.config.service_name, content, self.stability, trunk=self.trunk, tag=self.tag
+                response = self._call(
+                    self.client.provide_proto,
+                    self.config.service_name,
+                    content,
+                    self.stability,
+                    trunk=self.trunk,
+                    tag=self.tag,
                 )
             else:
                 return False
@@ -105,7 +140,7 @@ class Sanshain:
         def do_retire(api_type):
             family = api_type or "openapi"
             self.conanfile.output.info(f"Sanshain: Retiring {family} for {self.config.service_name}")
-            shed = self.client.retire(self.config.service_name, family) or {}
+            shed = self._call(self.client.retire, self.config.service_name, family) or {}
             self.conanfile.output.info(
                 "Sanshain: Retired — closed %d trunk pin(s), released %d contract(s); "
                 "history and existing pins are untouched"
@@ -140,11 +175,12 @@ class Sanshain:
         """Push the `catalogInfo` file (Backstage catalog-info.yaml) to Sanshain; needs Service 2.4.0.
 
         Without catalogInfo it warns and skips (strict: raises). A failed push
-        raises, or only warns under bestEffort.
+        raises, or only warns under bestEffort; a push Sanshain did not record
+        warns, or raises StrictError under strict.
         """
         output = self.conanfile.output
         try:
-            run_catalog(self.config, self.client, self.base_path, self.trunk, output.info, output.warning)
+            self._call(run_catalog, self.config, self.client, self.base_path, self.trunk, output.info, output.warning)
         except SanshainError as e:
             if not self.config.best_effort:
                 output.error(f"Sanshain: {e}")
@@ -191,7 +227,8 @@ class Sanshain:
 
             try:
                 if len(endpoints) > 1:
-                    result = self.client.require_bundle(
+                    result = self._call(
+                        self.client.require_bundle,
                         self.config.service_name,
                         service_name,
                         version,
@@ -203,7 +240,8 @@ class Sanshain:
                     )
                 else:
                     ep = endpoints[0]
-                    result = self.client.require(
+                    result = self._call(
+                        self.client.require,
                         self.config.service_name,
                         service_name,
                         version,
@@ -221,6 +259,8 @@ class Sanshain:
                 with open(output_file, "wb") as f:
                     f.write(result["body"])
                 self.conanfile.output.info(f"Sanshain: Saved to {output_file}")
+            except StrictError:
+                raise
             except Exception as e:
                 self.conanfile.output.error(f"Sanshain: Error requiring {service_name}: {e}")
                 if not self.config.best_effort:

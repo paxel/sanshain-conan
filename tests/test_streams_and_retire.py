@@ -4,8 +4,10 @@ import unittest
 from unittest import mock
 
 from sanshainconan.client import (
+    BOTH_STREAMS,
     SanshainClient,
     SanshainError,
+    StrictError,
     normalize_line_endings,
     resolve_stream,
 )
@@ -46,17 +48,23 @@ class TestResolveStream(unittest.TestCase):
         with mock.patch.dict("os.environ", {"SANSHAIN_TAG": "from-env"}, clear=True):
             self.assertEqual(resolve_stream(tag="from-flag"), (False, "from-flag"))
 
-    def test_trunk_and_tag_together_are_refused_locally(self):
-        # The server answers 400 for both; naming the misconfiguration here
-        # beats spending a round trip on it.
+    def test_trunk_and_tag_together_warn_and_declare_neither(self):
+        # The graph never fails a build: both declared is a warning, and the
+        # build is recorded in neither stream.
+        warned = []
         with mock.patch.dict("os.environ", {}, clear=True):
-            with self.assertRaises(SanshainError) as ctx:
-                resolve_stream(trunk_flag=True, tag="R")
-            self.assertIn("never both", str(ctx.exception))
-            self.assertIn("R", str(ctx.exception))
+            self.assertEqual(resolve_stream(trunk_flag=True, tag="R", warn=warned.append), (False, None))
         with mock.patch.dict("os.environ", {"SANSHAIN_TAG": "R"}, clear=True):
-            with self.assertRaises(SanshainError):
-                resolve_stream(trunk_flag=True)
+            self.assertEqual(resolve_stream(trunk_flag=True, warn=warned.append), (False, None))
+        self.assertEqual(warned, [BOTH_STREAMS] * 2)
+        self.assertEqual(BOTH_STREAMS, "trunk and tag are mutually exclusive - this build is recorded in neither")
+
+    def test_trunk_and_tag_together_under_strict_fail(self):
+        warned = []
+        with mock.patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(StrictError) as ctx:
+                resolve_stream(trunk_flag=True, tag="R", strict=True, warn=warned.append)
+        self.assertEqual(str(ctx.exception), f"strict: {BOTH_STREAMS}")
 
 
 class TestStreamsOnTheWire(unittest.TestCase):

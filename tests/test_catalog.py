@@ -64,17 +64,6 @@ class TestPushCatalog(unittest.TestCase):
         SanshainClient("https://x", insecure=True).push_catalog("s", CATALOG)
         self.assertFalse(mock_put.call_args[1]["verify"])
 
-    @mock.patch("requests.put")
-    def test_400_names_the_file_and_the_metadata_name_rule(self, mock_put):
-        mock_put.return_value = make_response(400, {"error": "no Component named 'orders-service'"})
-        with self.assertRaises(SanshainError) as ctx:
-            SanshainClient("http://x").push_catalog("orders-service", CATALOG, file_label="/p/catalog-info.yaml")
-        self.assertEqual(
-            str(ctx.exception),
-            "Sanshain rejected /p/catalog-info.yaml: no Component named 'orders-service'. "
-            "The Component's metadata.name must equal serviceName 'orders-service'.",
-        )
-
     @mock.patch("requests.get")
     @mock.patch("requests.put")
     def test_404_needs_service_2_4(self, mock_put, mock_get):
@@ -178,22 +167,6 @@ class TestCliCatalog(CatalogProject):
         self.assertEqual(mock_put.call_args[1]["json"]["catalog_info_yaml"], CATALOG)
         self.assertNotEqual(os.getcwd(), self.config_dir)
 
-    def test_400_fails_with_the_rejection(self):
-        code, out, _ = self.run_cli(put=make_response(400, {"error": "no Component named 'orders-service'"}))
-        self.assertEqual(code, 1)
-        resolved = os.path.join(self.config_dir, "meta/catalog-info.yaml")
-        self.assertIn(
-            f"Sanshain rejected {resolved}: no Component named 'orders-service'. "
-            "The Component's metadata.name must equal serviceName 'orders-service'.",
-            out,
-        )
-
-    def test_best_effort_turns_a_400_into_a_warning(self):
-        code, out, _ = self.run_cli("--best-effort", put=make_response(400, {"error": "bad"}))
-        self.assertEqual(code, 0)
-        self.assertIn("⚠ Sanshain rejected", out)
-        self.assertIn("Continuing (best effort)", out)
-
     def test_404_needs_2_4(self):
         code, out, _ = self.run_cli(
             put=make_response(404, text="Not Found"), get=make_response(200, {"version": "2.3.0"})
@@ -275,18 +248,6 @@ class TestHelperCatalog(CatalogProject):
         self.write_config(strict=True)
         with self.assertRaisesRegex(ConfigError, "strict: sanshain.yaml has no catalogInfo"):
             self.helper().catalog()
-
-    @mock.patch("requests.put")
-    def test_a_400_raises_unless_best_effort(self, mock_put):
-        mock_put.return_value = make_response(400, {"error": "bad"})
-        with self.assertRaisesRegex(SanshainError, "Sanshain rejected"):
-            self.helper().catalog()
-
-        self.write_config(catalogInfo="meta/catalog-info.yaml", bestEffort=True)
-        sanshain = self.helper()
-        sanshain.catalog()
-        warnings = [c.args[0] for c in sanshain.conanfile.output.warning.call_args_list]
-        self.assertTrue(warnings[0].startswith("Sanshain: Sanshain rejected"))
 
 
 if __name__ == "__main__":

@@ -54,7 +54,10 @@ Reads the `requires` section from `sanshain.yaml` and downloads the specificatio
 An `apiType: asyncapi` entry with `format: openapi` downloads the channels as an OpenAPI document instead, under the same file name (list the entry twice with different `outputDirectory`s for both formats). `format` accepts only `openapi`, only with `apiType: asyncapi`, and needs Sanshain Service 2.4.0 or later.
 
 ### `sanshain.catalog()`
-Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A rejected push raises — a `400` usually means the Component's `metadata.name` is not the `serviceName` — or only warns with `bestEffort: true`. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
+Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A failed push raises, or only warns with `bestEffort: true`. A file Sanshain cannot read as this project's Component (usually a `metadata.name` that is not the `serviceName`) is recorded nowhere and only warns; with `strict: true` it raises. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
+
+### Sanshain warnings
+The graph never fails a build. Every `Sanshain-Warning` response header (for example an unknown `SANSHAIN_TAG`) is logged with `output.warning`; with `strict: true` the call then raises `StrictError` (`strict: Sanshain warned: <text>`), regardless of `bestEffort`. `SANSHAIN_TRUNK` and `SANSHAIN_TAG` together warn and declare neither stream; under strict the helper raises when it is created.
 
 ## CI/CD Integration
 

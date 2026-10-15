@@ -130,9 +130,22 @@ ga switch this is a property of the invocation and never appears in `sanshain.ya
 - Trunk CI sets `SANSHAIN_TRUNK=true` (CLI: `--trunk`) — provides mark trunk's current version
   and requires feed the main graph.
 - Release and hotfix pipelines set `SANSHAIN_TAG=<branch>` (CLI: `--tag`) — the calls update
-  that sanshain-branch instead of trunk. The branch must already exist; an unknown one answers `404`.
+  that sanshain-branch instead of trunk. The branch must already exist and is never created by a
+  build; with an unknown one the call still succeeds but is recorded in no release graph, and Sanshain
+  warns `no sanshain-branch '<name>' - this build was not recorded in a release graph`.
 
-Declaring both fails before any request is sent.
+Declaring both is not an error either: the client warns
+`trunk and tag are mutually exclusive - this build is recorded in neither` and sends neither, so the
+build only feeds the dev graph. With `strict: true` it fails before any request is sent.
+
+## Sanshain warnings
+
+The dependency graph is informational and never fails a build. When Sanshain accepts a call but
+could not record all of it, it says so in a `Sanshain-Warning` response header. Every such header
+line is printed as a warning (CLI: `⚠ <text>`; Conan helper: `output.warning("Sanshain: <text>")`),
+on provide, retire, require and catalog calls alike, also on failed calls. With `strict: true` a
+warning fails the command after the call with `strict: Sanshain warned: <text>` (the first warning
+of that call); `--best-effort` does not soften this.
 
 ## Retiring a protocol
 
@@ -240,7 +253,8 @@ The installed package also provides the `sanshain-conan` command; `sanshain-cona
     ```
 
 -   Without `catalogInfo` the command warns `No catalogInfo in sanshain.yaml - skipping catalog.` and exits 0; with `strict: true` it fails. Strict checks only `serviceName` and `catalogInfo` here, never provides or requires.
--   A missing file fails naming the resolved path. A `400` means Sanshain could not read the file as this project's Component — usually a `metadata.name` that is not the `serviceName`. With `--best-effort` (or `SANSHAIN_BEST_EFFORT` / `bestEffort: true`) every failed push is a warning and the command exits 0.
+-   A missing file fails naming the resolved path. With `--best-effort` (or `SANSHAIN_BEST_EFFORT` / `bestEffort: true`) every failed push is a warning and the command exits 0.
+-   If Sanshain cannot read the file as this project's Component — invalid YAML, or usually a `metadata.name` that is not the `serviceName` — it records nothing (the previous periphery stays) and answers with a warning naming the reason, which is printed; the command exits 0. With `strict: true` it fails with `strict: Sanshain warned: <reason>`.
 
 Add it as a CI step next to `provide`, e.g. on trunk:
 
@@ -316,6 +330,8 @@ When strict mode is enabled:
 - No `requires` configured → exit with error
 - `catalog` without `catalogInfo` → exit with error (`catalog` checks only `serviceName` and `catalogInfo`)
 - An unknown field in `sanshain.yaml` → exit with error (see [Unknown fields](#unknown-fields))
+- A `Sanshain-Warning` from the service (see [Sanshain warnings](#sanshain-warnings)) → exit with error after the call, also with `--best-effort`
+- Both trunk and tag declared → exit with error before any request
 
 Note that a `requires` entry without a `version`, or any leftover branch-era field, is always a hard error — strict mode does not change that.
 

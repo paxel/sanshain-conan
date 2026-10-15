@@ -8,6 +8,7 @@ import yaml
 from .config import env_flag
 
 HTTP_TIMEOUT = 30
+WARNING_HEADER = "Sanshain-Warning"
 
 
 def sanitize(text):
@@ -47,7 +48,10 @@ def normalize_line_endings(content):
     return content.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def resolve_stream(trunk_flag=False, tag=None):
+BOTH_STREAMS = "trunk and tag are mutually exclusive - this build is recorded in neither"
+
+
+def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
     """Resolve which dependency graph this build's calls belong to.
 
     The stream is a property of the invocation, never of sanshain.yaml: the
@@ -56,19 +60,54 @@ def resolve_stream(trunk_flag=False, tag=None):
     overwrite what CI recorded. Reads SANSHAIN_TRUNK / SANSHAIN_TAG when the
     flags are unset.
 
-    Returns a (trunk, tag) pair; declaring both raises, because the server
-    would answer 400 and naming the misconfiguration locally beats a round
-    trip.
+    Returns a (trunk, tag) pair. Declaring both is a warning, never a failed
+    build: the graph is informational, so the build sends neither and is
+    recorded in no stream. Under strict it raises StrictError before any
+    request.
     """
     trunk = trunk_flag or env_flag("SANSHAIN_TRUNK")
     resolved_tag = (tag or os.environ.get("SANSHAIN_TAG") or "").strip() or None
     if trunk and resolved_tag:
-        raise SanshainError(
-            f"this build declares both trunk and tag '{resolved_tag}' — a build belongs to the "
-            "trunk stream or to one sanshain-branch, never both; set only one of --trunk / "
-            "SANSHAIN_TRUNK and --tag / SANSHAIN_TAG"
-        )
+        if strict:
+            raise StrictError(f"strict: {BOTH_STREAMS}")
+        if warn:
+            warn(BOTH_STREAMS)
+        return False, None
     return trunk, resolved_tag
+
+
+def warning_lines(response):
+    """Every Sanshain-Warning header line of a response, one entry per line.
+
+    requests joins repeated headers with commas in `response.headers`, and a
+    warning may itself contain a comma, so the separate lines are read from
+    the underlying urllib3 headers; the merged value is only the fallback.
+    """
+    raw_headers = getattr(getattr(response, "raw", None), "headers", None)
+    getlist = getattr(raw_headers, "getlist", None)
+    lines = None
+    if callable(getlist):
+        try:
+            lines = getlist(WARNING_HEADER)
+        except (TypeError, AttributeError):
+            lines = None
+    if not isinstance(lines, list):
+        headers = getattr(response, "headers", None)
+        merged = headers.get(WARNING_HEADER) if headers is not None else None
+        lines = [merged] if isinstance(merged, str) else []
+    return [line.strip() for line in lines if isinstance(line, str) and line.strip()]
+
+
+class StrictError(Exception):
+    """Strict mode turned a warning into a failure; best-effort does not soften it.
+
+    `error` is the failure of the same call, if it failed too: callers print
+    it before the strict failure.
+    """
+
+    def __init__(self, message, error=None):
+        self.error = error
+        super().__init__(message)
 
 
 class SanshainError(Exception):
@@ -89,8 +128,13 @@ class VersionConflictError(SanshainError):
 
 
 class SanshainClient:
-    def __init__(self, url, token=None, insecure=False):
+    def __init__(self, url, token=None, insecure=False, on_warning=None, strict=False):
+        """`on_warning` receives every Sanshain-Warning header line as
+        received; with `strict` a call that carried one raises StrictError
+        after it."""
         self.url = url.rstrip("/")
+        self.on_warning = on_warning
+        self.strict = strict
         self.token = token or os.environ.get("SANSHAIN_TOKEN")
         self.headers = {}
         if self.token:
@@ -116,6 +160,29 @@ class SanshainClient:
                 f"Sanshain server at {self.url} is {version}; this client requires Sanshain 2.x — upgrade the server."
             )
         return None
+
+    def _report_warnings(self, response):
+        lines = warning_lines(response)
+        if self.on_warning:
+            for line in lines:
+                self.on_warning(line)
+        return lines
+
+    def _check_strict(self, warnings, error=None):
+        if self.strict and warnings:
+            raise StrictError(f"strict: Sanshain warned: {warnings[0]}", error)
+
+    def _warned_call(self, response, finish):
+        """Print the response's warnings, then `finish(response)`. Under
+        strict a warning fails the call afterwards, also when it failed."""
+        warnings = self._report_warnings(response)
+        try:
+            result = finish(response)
+        except SanshainError as e:
+            self._check_strict(warnings, e)
+            raise
+        self._check_strict(warnings)
+        return result
 
     def _handle_response(self, response, producer_name=None):
         if 200 <= response.status_code < 300:
@@ -239,11 +306,15 @@ class SanshainClient:
         response = requests.post(
             f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
         )
-        self._handle_response(response, producer_name)
-        try:
-            return response.json()
-        except ValueError:
-            return None
+
+        def finish(response):
+            self._handle_response(response, producer_name)
+            try:
+                return response.json()
+            except ValueError:
+                return None
+
+        return self._warned_call(response, finish)
 
     def _check_format(self, response, fmt):
         """With format: openapi the answer must be an OpenAPI document; an
@@ -273,6 +344,16 @@ class SanshainClient:
         parsed = _parse_version(version) if version else None
         if parsed is None or parsed < (2, 4, 0):
             self._raise_format_needs_2_4(fmt, version)
+
+    def _finish_require(self, response, producer_name, fmt):
+        if response.status_code == 304:
+            return {"not_modified": True, "content": None, "etag": None}
+        self._check_format_rejected(response, fmt)
+        self._handle_response(response, producer_name)
+        self._check_format(response, fmt)
+        response_etag = response.headers.get("ETag")
+        # `body` is the answer byte for byte; it is what gets written to disk.
+        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
 
     def require_bundle(
         self,
@@ -312,14 +393,7 @@ class SanshainClient:
             verify=self.verify,
             timeout=HTTP_TIMEOUT,
         )
-        if response.status_code == 304:
-            return {"not_modified": True, "content": None, "etag": None}
-        self._check_format_rejected(response, fmt)
-        self._handle_response(response, producer_name)
-        self._check_format(response, fmt)
-        response_etag = response.headers.get("ETag")
-        # `body` is the answer byte for byte; it is what gets written to disk.
-        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
+        return self._warned_call(response, lambda r: self._finish_require(r, producer_name, fmt))
 
     def require(
         self,
@@ -360,20 +434,16 @@ class SanshainClient:
             url = f"{self.url}/require/grpc"
 
         response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT)
-        if response.status_code == 304:
-            return {"not_modified": True, "content": None, "etag": None}
-        self._check_format_rejected(response, fmt)
-        self._handle_response(response, producer_name)
-        self._check_format(response, fmt)
-        response_etag = response.headers.get("ETag")
-        # `body` is the answer byte for byte; it is what gets written to disk.
-        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
+        return self._warned_call(response, lambda r: self._finish_require(r, producer_name, fmt))
 
     def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo"):
         """Record the system's periphery from its Backstage catalog-info.yaml (PUT /catalog/<system>).
 
         Carries `trunk: true` only for a trunk build and never a tag: the
         endpoint answers 422 to unknown fields. Needs Sanshain Service 2.4.0.
+
+        A file Sanshain cannot read is no failure: the answer is a 200 with
+        `recorded: false` and the reason in a Sanshain-Warning header.
         """
         payload = {"catalog_info_yaml": catalog_info_yaml}
         if trunk:
@@ -385,21 +455,29 @@ class SanshainClient:
             verify=self.verify,
             timeout=HTTP_TIMEOUT,
         )
-        if response.status_code == 400:
-            try:
-                error = response.json().get("error")
-            except (ValueError, AttributeError):
-                error = None
-            raise SanshainError(
-                f"Sanshain rejected {file_label}: {sanitize(error or response.text)}. "
-                f"The Component's metadata.name must equal serviceName '{system_name}'."
-            )
-        if response.status_code == 404:
-            version = self.get_server_version()
-            server = f"server is {version}" if version else "server version unknown"
-            raise SanshainError(f"sanshain catalog needs Sanshain Service 2.4.0 or later ({server})")
-        self._handle_response(response, system_name)
+        warnings = self._report_warnings(response)
         try:
-            return response.json()
+            if response.status_code == 404:
+                version = self.get_server_version()
+                server = f"server is {version}" if version else "server version unknown"
+                raise SanshainError(f"sanshain catalog needs Sanshain Service 2.4.0 or later ({server})")
+            self._handle_response(response, system_name)
+        except SanshainError as e:
+            self._check_strict(warnings, e)
+            raise
+        try:
+            body = response.json()
         except ValueError:
-            return {}
+            body = None
+        if not isinstance(body, dict):
+            body = {}
+        # Missing `recorded` counts as true (a 2.4.0 pre-release service).
+        if body.get("recorded", True) is False and not warnings:
+            # The service names the reason in a header; without one, say so.
+            text = f"Sanshain did not record {file_label}"
+            if self.on_warning:
+                self.on_warning(text)
+            if self.strict:
+                raise StrictError(f"strict: {text}")
+        self._check_strict(warnings)
+        return body

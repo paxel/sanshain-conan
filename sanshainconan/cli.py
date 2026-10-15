@@ -4,7 +4,7 @@ import sys
 
 from .cache import SanshainCache
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, VersionConflictError, resolve_stream
+from .client import SanshainClient, SanshainError, StrictError, VersionConflictError, resolve_stream
 from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
@@ -25,6 +25,10 @@ def format_version_conflict(error, spec_file, api_type):
         f"✗ Version conflict: {error.server_message}\n"
         f"  Publish as {error.proposed_version} — update {slot} in {spec_file}"
     )
+
+
+def warn(text):
+    print(f"⚠ {text}")
 
 
 def main():
@@ -89,9 +93,10 @@ def main():
         elif env_flag("SANSHAIN_BEST_EFFORT"):
             config.best_effort = True
 
-        client = SanshainClient(config.sanshain_url, insecure=args.insecure)
         strict = config.strict
-        trunk, tag = resolve_stream(args.trunk, args.tag)
+        # Every Sanshain-Warning header is printed; under strict it fails the command.
+        client = SanshainClient(config.sanshain_url, insecure=args.insecure, on_warning=warn, strict=strict)
+        trunk, tag = resolve_stream(args.trunk, args.tag, strict=strict, warn=warn)
 
         if args.command == "catalog":
             config_dir = os.path.dirname(os.path.abspath(args.config))
@@ -328,12 +333,20 @@ def main():
                         cache.update_require_entry(cache_key, result["etag"])
                         cache.save()
 
+                except StrictError:
+                    raise
                 except Exception as e:
                     print(f"Error requiring {service_name}: {e}")
                     if not config.best_effort:
                         sys.exit(1)
                     print("Continuing (best effort)")
 
+    except StrictError as e:
+        # Strict beats best-effort: the failed call first, then the strict failure.
+        if e.error is not None:
+            print(f"✗ {e.error}")
+        print(f"✗ {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
         if config is None or not config.best_effort:

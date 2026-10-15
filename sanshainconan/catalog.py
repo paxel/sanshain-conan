@@ -11,7 +11,8 @@ def run_catalog(config, client, base_path, trunk, info, warn):
 
     Strict checks only serviceName and catalogInfo and raises ConfigError;
     an unreadable file or a failed call raises SanshainError, which the
-    caller turns into a warning under best-effort.
+    caller turns into a warning under best-effort. A push Sanshain did not
+    record only warns (through the client), unless strict.
     """
     if not config.service_name:
         if config.strict:
@@ -32,6 +33,8 @@ def run_catalog(config, client, base_path, trunk, info, warn):
         raise SanshainError(f"Cannot read catalogInfo file {path}: {e.strerror or e}")
 
     response = client.push_catalog(config.service_name, content, trunk=trunk, file_label=path) or {}
+    if response.get("recorded", True) is False:
+        return  # the client already warned why
     resources = response.get("resources") or []
     graphs = "main+dev" if response.get("trunk", trunk) else "dev"
     info(f"Catalog recorded for {response.get('system', config.service_name)} ({graphs}): {len(resources)} resources")

@@ -21,7 +21,7 @@ three are pipeline concerns and never live in `sanshain.yaml`.
 import os
 
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, resolve_stream
+from .client import SanshainClient, SanshainError, StrictError, resolve_origin, resolve_stream
 from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
@@ -56,6 +56,9 @@ class Sanshain:
         # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the
         # whole mechanism.
         self.stability = "ga" if env_flag("SANSHAIN_GA") else "snapshot"
+        # Why this build provides: build and change URL from the runner,
+        # tickets and note from SANSHAIN_TICKETS / SANSHAIN_NOTE.
+        self.origin = resolve_origin()
         try:
             self.trunk, self.tag = resolve_stream(strict=self.config.strict, warn=self._warn)
         except StrictError as e:
@@ -113,6 +116,7 @@ class Sanshain:
                     self.stability,
                     trunk=self.trunk,
                     tag=self.tag,
+                    origin=self.origin,
                 )
             elif effective_type == "asyncapi":
                 response = self._call(
@@ -122,6 +126,7 @@ class Sanshain:
                     self.stability,
                     trunk=self.trunk,
                     tag=self.tag,
+                    origin=self.origin,
                 )
             elif effective_type == "proto" or effective_type == "grpc":
                 response = self._call(
@@ -131,6 +136,7 @@ class Sanshain:
                     self.stability,
                     trunk=self.trunk,
                     tag=self.tag,
+                    origin=self.origin,
                 )
             else:
                 return False

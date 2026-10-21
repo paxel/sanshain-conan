@@ -51,6 +51,64 @@ def normalize_line_endings(content):
 BOTH_STREAMS = "trunk and tag are mutually exclusive - this build is recorded in neither"
 
 
+def _first(*values):
+    """The first value that is not blank, stripped; None when there is none."""
+    for value in values:
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def _runner_build_url(env):
+    server, repo, run = env.get("GITHUB_SERVER_URL"), env.get("GITHUB_REPOSITORY"), env.get("GITHUB_RUN_ID")
+    if _first(server) and _first(repo) and _first(run):
+        return f"{server.strip()}/{repo.strip()}/actions/runs/{run.strip()}"
+    return _first(env.get("CI_JOB_URL"), env.get("BUILD_URL"))
+
+
+def _runner_change_url(env):
+    server, repo = _first(env.get("GITHUB_SERVER_URL")), _first(env.get("GITHUB_REPOSITORY"))
+    ref = (env.get("GITHUB_REF") or "").strip()
+    if server and repo and ref.startswith("refs/pull/"):
+        parts = ref.split("/")
+        if len(parts) >= 3 and parts[2]:
+            return f"{server}/{repo}/pull/{parts[2]}"
+    project, iid = _first(env.get("CI_MERGE_REQUEST_PROJECT_URL")), _first(env.get("CI_MERGE_REQUEST_IID"))
+    if project and iid:
+        return f"{project}/-/merge_requests/{iid}"
+    return _first(env.get("CHANGE_URL"))
+
+
+def resolve_origin(build_url=None, change_url=None, tickets=None, note=None, env=None):
+    """What the pipeline knows about why a provide runs, as payload fields.
+
+    An explicit value first, then SANSHAIN_BUILD_URL / SANSHAIN_CHANGE_URL /
+    SANSHAIN_TICKETS / SANSHAIN_NOTE, and for the build and change URL the
+    runner's own variables on GitHub Actions, GitLab CI and Jenkins. Tickets
+    and the note are human intent and never come from the runner. Nothing is
+    read from git. Only known fields are present: the server refuses nulls.
+    """
+    env = os.environ if env is None else env
+    origin = {}
+    build = _first(build_url, env.get("SANSHAIN_BUILD_URL"), _runner_build_url(env))
+    change = _first(change_url, env.get("SANSHAIN_CHANGE_URL"), _runner_change_url(env))
+    text = _first(note, env.get("SANSHAIN_NOTE"))
+    ids = []
+    for raw in (_first(tickets, env.get("SANSHAIN_TICKETS")) or "").split(","):
+        ticket = raw.strip()
+        if ticket and ticket not in ids:
+            ids.append(ticket)
+    if build:
+        origin["build_url"] = build
+    if change:
+        origin["change_url"] = change
+    if ids:
+        origin["tickets"] = ids
+    if text:
+        origin["note"] = text
+    return origin
+
+
 def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
     """Resolve which dependency graph this build's calls belong to.
 
@@ -247,7 +305,7 @@ class SanshainClient:
             payload["tag"] = tag
         return payload
 
-    def provide(self, producer_name, openapi_yaml, stability, trunk=False, tag=None):
+    def provide(self, producer_name, openapi_yaml, stability, trunk=False, tag=None, origin=None):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -257,9 +315,10 @@ class SanshainClient:
             trunk,
             tag,
         )
+        payload.update(origin or {})
         return self._post_provide("/provide", payload, producer_name)
 
-    def provide_asyncapi(self, producer_name, asyncapi_yaml, stability, trunk=False, tag=None):
+    def provide_asyncapi(self, producer_name, asyncapi_yaml, stability, trunk=False, tag=None, origin=None):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -269,9 +328,10 @@ class SanshainClient:
             trunk,
             tag,
         )
+        payload.update(origin or {})
         return self._post_provide("/provide/asyncapi", payload, producer_name)
 
-    def provide_proto(self, producer_name, proto_content, stability, trunk=False, tag=None):
+    def provide_proto(self, producer_name, proto_content, stability, trunk=False, tag=None, origin=None):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -281,6 +341,7 @@ class SanshainClient:
             trunk,
             tag,
         )
+        payload.update(origin or {})
         return self._post_provide("/provide/grpc", payload, producer_name)
 
     def retire(self, producer_name, api_type=None, dry_run=False):

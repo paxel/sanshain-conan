@@ -4,7 +4,7 @@ import sys
 
 from .cache import SanshainCache
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, VersionConflictError, resolve_stream
+from .client import SanshainClient, SanshainError, StrictError, VersionConflictError, resolve_origin, resolve_stream
 from .config import ConfigError, env_flag, load_config, puzzled_cat
 
 
@@ -47,6 +47,20 @@ def main():
         help="this build belongs to a sanshain-branch — release/hotfix pipelines (also SANSHAIN_TAG)",
     )
     parser.add_argument("--best-effort", action="store_true", help="Continue on errors")
+    parser.add_argument(
+        "--build-url",
+        default=None,
+        help="where this build ran (also SANSHAIN_BUILD_URL; default: the runner's own variable)",
+    )
+    parser.add_argument(
+        "--change-url",
+        default=None,
+        help="the pull or merge request behind this build (SANSHAIN_CHANGE_URL; default: the runner's variable)",
+    )
+    parser.add_argument(
+        "--tickets", default=None, help="ticket ids this build closes, comma-separated (SANSHAIN_TICKETS)"
+    )
+    parser.add_argument("--note", default=None, help="one line of intent for this provide (also SANSHAIN_NOTE)")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -97,6 +111,7 @@ def main():
         # Every Sanshain-Warning header is printed; under strict it fails the command.
         client = SanshainClient(config.sanshain_url, insecure=args.insecure, on_warning=warn, strict=strict)
         trunk, tag = resolve_stream(args.trunk, args.tag, strict=strict, warn=warn)
+        origin = resolve_origin(args.build_url, args.change_url, args.tickets, args.note)
 
         if args.command == "catalog":
             config_dir = os.path.dirname(os.path.abspath(args.config))
@@ -155,13 +170,17 @@ def main():
                 print(f"Providing {effective_type} {config.service_name} (stability: {stability})...")
                 try:
                     if effective_type == "openapi":
-                        response = client.provide(config.service_name, content, stability, trunk=trunk, tag=tag)
+                        response = client.provide(
+                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                        )
                     elif effective_type == "asyncapi":
                         response = client.provide_asyncapi(
-                            config.service_name, content, stability, trunk=trunk, tag=tag
+                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
                         )
                     elif effective_type == "proto" or effective_type == "grpc":
-                        response = client.provide_proto(config.service_name, content, stability, trunk=trunk, tag=tag)
+                        response = client.provide_proto(
+                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                        )
                     else:
                         raise SanshainError(f"Unknown apiType: {effective_type}")
                 except VersionConflictError as e:

@@ -138,6 +138,21 @@ Declaring both is not an error either: the client warns
 `trunk and tag are mutually exclusive - this build is recorded in neither` and sends neither, so the
 build only feeds the dev graph. With `strict: true` it fails before any request is sent.
 
+## Origin: why this build provides
+
+A provide carries what the pipeline knows about *why* it runs (Sanshain Service 2.9.0 and later).
+Sanshain stores it with the version and shows it on the version row, in the diff and the blame.
+
+- `SANSHAIN_BUILD_URL` (CLI: `--build-url`) and `SANSHAIN_CHANGE_URL` (CLI: `--change-url`, the pull
+  or merge request) default to the runner's own variables on GitHub Actions (`GITHUB_SERVER_URL`,
+  `GITHUB_REPOSITORY`, `GITHUB_RUN_ID`, a pull request's `GITHUB_REF`), GitLab CI (`CI_JOB_URL`,
+  `CI_MERGE_REQUEST_PROJECT_URL`, `CI_MERGE_REQUEST_IID`) and Jenkins (`BUILD_URL`, `CHANGE_URL`).
+- `SANSHAIN_TICKETS` (CLI: `--tickets`, comma-separated ids) and `SANSHAIN_NOTE` (CLI: `--note`,
+  one line) come only from the pipeline. The Conan integration reads the environment only.
+
+The latest provide that carries any of it wins; a byte-identical re-provide only fills an empty
+origin. Nothing is read from git.
+
 ## Sanshain warnings
 
 The dependency graph is informational and never fails a build. When Sanshain accepts a call but

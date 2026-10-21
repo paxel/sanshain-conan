@@ -87,5 +87,22 @@ class TestProvideCarriesOrigin(unittest.TestCase):
             self.assertNotIn("build_url", payload)
 
 
+class TestOldServerRefusingTheOrigin(unittest.TestCase):
+    @mock.patch("requests.post")
+    def test_repeats_the_provide_without_the_origin(self, mock_post):
+        refused = mock.Mock(status_code=422, headers={})
+        refused.text = "Failed to deserialize the JSON body into the target type: unknown field `note`"
+        ok = mock.Mock(status_code=202, text="", headers={})
+        ok.json.return_value = PROVIDE_OK
+        mock_post.side_effect = [refused, ok]
+        client = SanshainClient("http://localhost:8080")
+        with mock.patch("sys.stderr"):
+            res = client.provide("svc", "x", "snapshot", origin={"note": "why"})
+        self.assertEqual(res["version"], "1.2.0")
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(mock_post.call_args_list[0][1]["json"]["note"], "why")
+        self.assertNotIn("note", mock_post.call_args_list[1][1]["json"])
+
+
 if __name__ == "__main__":
     unittest.main()

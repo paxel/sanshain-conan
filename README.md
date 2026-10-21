@@ -151,7 +151,8 @@ Sanshain stores it with the version and shows it on the version row, in the diff
   one line) come only from the pipeline. The Conan integration reads the environment only.
 
 The latest provide that carries any of it wins; a byte-identical re-provide only fills an empty
-origin. Nothing is read from git.
+origin. Nothing is read from git. A service before 2.9.0 refuses the origin fields; the client then
+warns and repeats the provide without them, so upgrading the client first never fails a build.
 
 ## Sanshain warnings
 

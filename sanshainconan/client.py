@@ -1,5 +1,6 @@
 import os
 import string
+import sys
 from urllib.parse import quote
 
 import requests
@@ -49,6 +50,10 @@ def normalize_line_endings(content):
 
 
 BOTH_STREAMS = "trunk and tag are mutually exclusive - this build is recorded in neither"
+
+
+ORIGIN_FIELDS = ("build_url", "change_url", "tickets", "note")
+ORIGIN_DROPPED_WARNING = "Sanshain Service before 2.9.0 does not take the build's origin; providing without it"
 
 
 def _first(*values):
@@ -367,6 +372,16 @@ class SanshainClient:
         response = requests.post(
             f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
         )
+        # A service before 2.9.0 refuses the origin fields by name: the provide
+        # must not fail for a fact the service cannot store, so it is repeated
+        # without them.
+        if response.status_code == 422 and any(f in payload for f in ORIGIN_FIELDS):
+            if any(f"unknown field `{f}`" in (response.text or "") for f in ORIGIN_FIELDS):
+                print(f"⚠ {ORIGIN_DROPPED_WARNING}", file=sys.stderr)
+                payload = {k: v for k, v in payload.items() if k not in ORIGIN_FIELDS}
+                response = requests.post(
+                    f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
+                )
 
         def finish(response):
             self._handle_response(response, producer_name)

@@ -3,6 +3,11 @@
 This file contains historical changelog entries for sanshain-conan.
 For recent changes, see [CHANGELOG.md](CHANGELOG.md).
 
+## [2.3.0] - 2026-10-19
+
+### Security
+- The lock file pins `urllib3` 2.8.0 and `idna` 3.20, closing the advisories the weekly scan reported for the previous pins.
+
 ## [2.2.0] - 2026-10-16
 
 ### Added

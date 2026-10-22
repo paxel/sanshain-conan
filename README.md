@@ -154,6 +154,17 @@ The latest provide that carries any of it wins; a byte-identical re-provide only
 origin. Nothing is read from git. A service before 2.9.0 refuses the origin fields; the client then
 warns and repeats the provide without them, so upgrading the client first never fails a build.
 
+A CLI flag wins over its `SANSHAIN_*` variable, which wins over the runner's variable. A blank value
+counts as unset, so an empty flag or variable does not switch the runner's URL off; only unsetting
+the runner variable does. Other CI systems (Azure Pipelines, Bitbucket Pipelines, CircleCI,
+Buildkite, TeamCity, …) fill nothing: set `SANSHAIN_BUILD_URL` and `SANSHAIN_CHANGE_URL` from their
+variables. The service accepts http(s) URLs, at most 20 ticket ids made of letters, digits, `-`, `_`
+and `.`, and a note of at most 200 characters.
+
+This client sends no `dry_run`. A pull-request pipeline that wants Sanshain to check the version
+rules without storing anything calls the route with `curl` and `"dry_run": true` (see
+[CI integration](https://paxel.github.io/sanshain-service/developer/ci-integration.html#dry-runs-for-pull-requests)).
+
 ## Sanshain warnings
 
 The dependency graph is informational and never fails a build. When Sanshain accepts a call but

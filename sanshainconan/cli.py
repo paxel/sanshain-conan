@@ -397,7 +397,7 @@ def main():
                         print(f"⏭ {service_name} spec unchanged (304), skipping code generation.")
                         continue
 
-                    ext = "proto" if api_type == "proto" else "yaml"
+                    ext = "proto" if api_type in ("proto", "grpc") else "yaml"
                     output_file = os.path.join(output_path, f"{service_name}.{ext}")
                     # Binary: the server's bytes as they are, no newline translation.
                     with open(output_file, "wb") as f:

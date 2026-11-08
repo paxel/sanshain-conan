@@ -543,7 +543,8 @@ class SanshainClient:
                 "producername": producer_name,
                 "version": version,
                 "endpoints": endpoints,
-                "api_type": api_type or "openapi",
+                # grpc, which a provide takes too, is proto in the contract's enum.
+                "api_type": "proto" if api_type == "grpc" else (api_type or "openapi"),
             },
             trunk,
             tag,

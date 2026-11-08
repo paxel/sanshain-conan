@@ -229,3 +229,26 @@ class TestWrongServerDiagnosis(unittest.TestCase):
             client.provide("my-service", "openapi: 3.0.0", "snapshot")
 
         self.assertIn("500", str(ctx.exception))
+
+
+class TestGrpcRequire(unittest.TestCase):
+    @mock.patch("requests.get")
+    def test_single_endpoint_goes_to_the_grpc_route(self, mock_get):
+        mock_get.return_value = make_response(200, text='syntax = "proto3";')
+
+        SanshainClient("http://localhost:8080").require(
+            "consumer", "pay", "1.0.0", "pay.Payments/Charge", "RPC", "grpc"
+        )
+
+        args, _ = mock_get.call_args
+        self.assertEqual(args[0], "http://localhost:8080/require/grpc")
+
+    @mock.patch("requests.post")
+    def test_bundle_sends_grpc_as_proto(self, mock_post):
+        mock_post.return_value = make_response(200, text='syntax = "proto3";')
+        endpoints = [{"path": "pay.Payments/Charge", "method": "RPC"}, {"path": "pay.Payments/Refund", "method": "RPC"}]
+
+        SanshainClient("http://localhost:8080").require_bundle("consumer", "pay", "1.0.0", endpoints, "grpc")
+
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["json"]["api_type"], "proto")

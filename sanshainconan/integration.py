@@ -293,7 +293,7 @@ class Sanshain:
                         annotations=self.annotations,
                     )
 
-                ext = "proto" if api_type == "proto" else "yaml"
+                ext = "proto" if api_type in ("proto", "grpc") else "yaml"
                 output_file = os.path.join(base_output, f"{service_name}.{ext}")
                 # Binary: the server's bytes as they are, no newline translation.
                 with open(output_file, "wb") as f:

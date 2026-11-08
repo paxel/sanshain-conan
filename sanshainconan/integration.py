@@ -116,9 +116,10 @@ class Sanshain:
         def do_provide(file_path, api_type):
             full_path = os.path.join(self.base_path, file_path)
             if not os.path.exists(full_path):
-                self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 if not self.config.best_effort:
+                    # Logged once, by each(), before it propagates.
                     raise Exception(f"File not found: {full_path}")
+                self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 return False
 
             with open(full_path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped

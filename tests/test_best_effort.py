@@ -161,6 +161,14 @@ class TestHelper(BestEffortTestCase):
         sanshain.client.provide_asyncapi.assert_not_called()
         sanshain.conanfile.output.error.assert_called_once_with("Sanshain: Request failed with status 500: boom")
 
+    def test_a_missing_spec_file_is_logged_once_and_raises(self):
+        os.remove(os.path.join(self.folder, "openapi.yaml"))
+        sanshain = self.helper(TWO_PROVIDES)
+        with self.assertRaises(Exception):
+            sanshain.provide()
+        path = os.path.join(self.folder, "openapi.yaml")
+        sanshain.conanfile.output.error.assert_called_once_with(f"Sanshain: File not found: {path}")
+
     def test_an_unsupported_provide_api_type_raises_also_with_best_effort(self):
         with self.assertRaises(ConfigError) as ctx:
             self.helper(

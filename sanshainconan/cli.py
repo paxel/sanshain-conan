@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 
+from .annotations import fill_annotations, parse_set
 from .cache import SanshainCache
 from .catalog import run_catalog
 from .client import (
@@ -30,6 +31,26 @@ def format_version_conflict(error, spec_file, api_type):
 
 def warn(text):
     print(f"⚠ {text}")
+
+
+def set_argument(arg):
+    """argparse type of `--set NAME=value`."""
+    try:
+        return parse_set(arg)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
+def resolve_annotations(config, sets, strict):
+    """The annotations of sanshain.yaml with their placeholders filled from
+    --set and SANSHAIN_SET_*. Every entry left out is a warning; under strict
+    the first fails the command before any request, also with best effort."""
+    annotations, warnings = fill_annotations(config.annotations, dict(sets or []))
+    for text in warnings:
+        warn(text)
+    if strict and warnings:
+        raise StrictError(f"strict: {warnings[0]}")
+    return annotations
 
 
 def main():
@@ -66,6 +87,13 @@ def main():
         "--tickets", default=None, help="ticket ids this build closes, comma-separated (SANSHAIN_TICKETS)"
     )
     parser.add_argument("--note", default=None, help="one line of intent for this provide (also SANSHAIN_NOTE)")
+    parser.add_argument(
+        "--set",
+        action="append",
+        type=set_argument,
+        metavar="NAME=value",
+        help="fill the {{NAME}} placeholders of the annotations in sanshain.yaml; repeatable (also SANSHAIN_SET_NAME)",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -117,11 +145,13 @@ def main():
         client = SanshainClient(config.sanshain_url, insecure=args.insecure, on_warning=warn, strict=strict)
         trunk, tag = resolve_stream(args.trunk, args.tag, strict=strict, warn=warn)
         origin = resolve_origin(args.build_url, args.change_url, args.tickets, args.note)
+        # Every entry is filled on every command; the client sends what each call may carry.
+        annotations = resolve_annotations(config, args.set, strict)
 
         if args.command == "catalog":
             config_dir = os.path.dirname(os.path.abspath(args.config))
             try:
-                run_catalog(config, client, config_dir, trunk, print, print)
+                run_catalog(config, client, config_dir, trunk, print, print, annotations=annotations)
             except ConfigError as e:
                 print(e)
                 sys.exit(1)
@@ -177,15 +207,33 @@ def main():
                 try:
                     if effective_type == "openapi":
                         response = client.provide(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     elif effective_type == "asyncapi":
                         response = client.provide_asyncapi(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     elif effective_type == "proto" or effective_type == "grpc":
                         response = client.provide_proto(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     else:
                         raise SanshainError(f"Unknown apiType: {effective_type}")
@@ -323,6 +371,7 @@ def main():
                             trunk=trunk,
                             tag=tag,
                             fmt=fmt,
+                            annotations=annotations,
                         )
                     else:
                         ep = endpoints[0]
@@ -341,6 +390,7 @@ def main():
                             trunk=trunk,
                             tag=tag,
                             fmt=fmt,
+                            annotations=annotations,
                         )
 
                     if result.get("not_modified"):

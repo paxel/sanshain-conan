@@ -8,7 +8,7 @@
 
 A Conan extension to manage API specifications (OpenAPI, AsyncAPI, gRPC/Proto) during the C++ build process.
 
-**Compatibility: sanshain-conan 2.x speaks Sanshain Service 2.x. The `catalog` command needs Sanshain Service 2.4.0 or later; all other commands work with any 2.x service.**
+**Compatibility: sanshain-conan 2.x speaks Sanshain Service 2.x. The `catalog` command needs Sanshain Service 2.4.0 or later; all other commands work with any 2.x service. Annotations need Sanshain Service 2.13.0 or later; an older service gets the calls without them.**
 
 ## Description
 Sanshain Conan Plugin allows you to:
@@ -173,6 +173,48 @@ and `.`, and a note of at most 200 characters.
 This client sends no `dry_run`. A pull-request pipeline that wants Sanshain to check the version
 rules without storing anything calls the route with `curl` and `"dry_run": true` (see
 [CI integration](https://paxel.github.io/sanshain-service/developer/ci-integration.html#dry-runs-for-pull-requests)).
+
+## Annotations
+
+`sanshain.yaml` may declare named values that Sanshain stores with the provided version
+(`scope: version`) or with the system (`scope: system`). **Annotations need Sanshain Service 2.13.0
+or later.**
+
+```yaml
+annotations:
+  - scope: version
+    name: requirements
+    value: "http://solar.system/id-{{AREA}}/requirements/{{ID}}"
+  - scope: system
+    name: jenkins
+    value: "https://jenkins.corp/job/payments"
+```
+
+- Each entry has exactly `scope` (`version` or `system`), `name` and `value`, all strings. A missing
+  field, another type or another scope fails naming the entry; an extra key is an
+  [unknown field](#unknown-fields). The limits (20 per scope, a name of at most 40 letters, digits,
+  `-` and `_`, a value of at most 2048 characters) are checked by the service, which answers `400`
+  naming the entry.
+- `{{NAME}}` (letters, digits and `_` only, no spaces) is a placeholder, filled from the CLI flag
+  `--set NAME=value` (repeatable, given before the command like the other flags; the value is
+  everything after the first `=`), else from the environment variable `SANSHAIN_SET_NAME` (exact
+  case). The Conan integration has no flags and reads `SANSHAIN_SET_NAME` only. Anything else in
+  double braces (`{{ A }}`, `{{a-b}}`, `{{}}`) is literal text.
+- A placeholder counts as filled only with a non-empty value; an empty `--set NAME=` does not fall
+  back to the variable. An entry with an unfilled placeholder is left out with a warning, e.g.
+  `annotation 'requirements' left out: {{ID}} is not set (--set ID=… or SANSHAIN_SET_ID)`; the
+  other entries are still sent. With `strict: true` that warning fails the command before any
+  request.
+- A provide sends every entry; a require, a bundle require and the catalog push send only the
+  `scope: system` ones; a retire sends none.
+- A service before 2.13.0 refuses the field: the client warns once,
+  `Sanshain Service before 2.13.0 does not take annotations; sending without them`, and repeats the
+  call without annotations for the rest of the command.
+
+```bash
+python3 -m sanshainconan.cli --set AREA=payments --set ID=REQ-42 provide
+# or: SANSHAIN_SET_AREA=payments SANSHAIN_SET_ID=REQ-42 python3 -m sanshainconan.cli provide
+```
 
 ## Sanshain warnings
 
@@ -383,6 +425,7 @@ When strict mode is enabled:
 - An unknown field in `sanshain.yaml` → exit with error (see [Unknown fields](#unknown-fields))
 - A `Sanshain-Warning` from the service (see [Sanshain warnings](#sanshain-warnings)) → exit with error after the call, also with `--best-effort`
 - Both trunk and tag declared → exit with error before any request
+- An annotation left out for an unfilled placeholder (see [Annotations](#annotations)) → exit with error before any request
 
 Note that a `requires` entry without a `version`, or any leftover branch-era field, is always a hard error — strict mode does not change that.
 

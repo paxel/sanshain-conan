@@ -22,6 +22,7 @@ true` there may make a provide GA on a build that declares a stream, unless
 
 import os
 
+from .annotations import fill_annotations
 from .catalog import run_catalog
 from .client import (
     SanshainClient,
@@ -73,6 +74,16 @@ class Sanshain:
         # After the stream: SANSHAIN_GA decides when set, else autoGa makes a
         # provide GA on a build that declares trunk or a tag; else snapshot.
         self.stability = resolve_stability(auto_ga=self.config.auto_ga, declared=stream_declared())
+        # The annotations' {{NAME}} placeholders come from SANSHAIN_SET_NAME
+        # alone (a `conan install` carries no flags). Every entry left out is
+        # a warning; under strict the first raises here, before any request.
+        self.annotations, left_out = fill_annotations(self.config.annotations, flag_hint=False)
+        for text in left_out:
+            self._warn(text)
+        if self.config.strict and left_out:
+            error = StrictError(f"strict: {left_out[0]}")
+            conanfile.output.error(f"Sanshain: {error}")
+            raise error
 
     def _warn(self, text):
         self.conanfile.output.warning(f"Sanshain: {text}")
@@ -126,6 +137,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             elif effective_type == "asyncapi":
                 response = self._call(
@@ -136,6 +148,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             elif effective_type == "proto" or effective_type == "grpc":
                 response = self._call(
@@ -146,6 +159,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             else:
                 return False
@@ -195,7 +209,16 @@ class Sanshain:
         """
         output = self.conanfile.output
         try:
-            self._call(run_catalog, self.config, self.client, self.base_path, self.trunk, output.info, output.warning)
+            self._call(
+                run_catalog,
+                self.config,
+                self.client,
+                self.base_path,
+                self.trunk,
+                output.info,
+                output.warning,
+                annotations=self.annotations,
+            )
         except SanshainError as e:
             if not self.config.best_effort:
                 output.error(f"Sanshain: {e}")
@@ -252,6 +275,7 @@ class Sanshain:
                         trunk=self.trunk,
                         tag=self.tag,
                         fmt=fmt,
+                        annotations=self.annotations,
                     )
                 else:
                     ep = endpoints[0]
@@ -266,6 +290,7 @@ class Sanshain:
                         trunk=self.trunk,
                         tag=self.tag,
                         fmt=fmt,
+                        annotations=self.annotations,
                     )
 
                 ext = "proto" if api_type == "proto" else "yaml"

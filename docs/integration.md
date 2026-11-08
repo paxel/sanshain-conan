@@ -56,6 +56,9 @@ An `apiType: asyncapi` entry with `format: openapi` downloads the channels as an
 ### `sanshain.catalog()`
 Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A failed push raises, or only warns with `bestEffort: true`. A file Sanshain cannot read as this project's Component (usually a `metadata.name` that is not the `serviceName`) is recorded nowhere and only warns; with `strict: true` it raises. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
 
+### Annotations
+The `annotations` of `sanshain.yaml` (see the README) travel with `provide()` (every entry), `require()` and `catalog()` (the `scope: system` ones only); a retire sends none. **They need Sanshain Service 2.13.0 or later**; an older service gets the calls without them, with one warning. A `{{NAME}}` placeholder is filled from the environment variable `SANSHAIN_SET_NAME` only (exact case, non-empty), since a `conan install` carries no flags. An entry with an unfilled placeholder is left out with a warning (`annotation 'requirements' left out: {{ID}} is not set (SANSHAIN_SET_ID)`); with `strict: true` the helper raises `StrictError` when it is created.
+
 ### Sanshain warnings
 The graph never fails a build. Every `Sanshain-Warning` response header (for example an unknown `SANSHAIN_TAG`) is logged with `output.warning`; with `strict: true` the call then raises `StrictError` (`strict: Sanshain warned: <text>`), regardless of `bestEffort`. `SANSHAIN_TRUNK` and `SANSHAIN_TAG` together warn and declare neither stream; under strict the helper raises when it is created.
 

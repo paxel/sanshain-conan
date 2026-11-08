@@ -6,8 +6,9 @@ from .client import SanshainError
 from .config import ConfigError
 
 
-def run_catalog(config, client, base_path, trunk, info, warn):
-    """Push the file named by `catalogInfo` for this build's stream.
+def run_catalog(config, client, base_path, trunk, info, warn, annotations=None):
+    """Push the file named by `catalogInfo` for this build's stream, with the
+    filled annotations (the client sends only the system ones).
 
     Strict checks only serviceName and catalogInfo and raises ConfigError;
     an unreadable file or a failed call raises SanshainError, which the
@@ -32,7 +33,9 @@ def run_catalog(config, client, base_path, trunk, info, warn):
     except OSError as e:
         raise SanshainError(f"Cannot read catalogInfo file {path}: {e.strerror or e}")
 
-    response = client.push_catalog(config.service_name, content, trunk=trunk, file_label=path) or {}
+    response = (
+        client.push_catalog(config.service_name, content, trunk=trunk, file_label=path, annotations=annotations) or {}
+    )
     if response.get("recorded", True) is False:
         return  # the client already warned why
     resources = response.get("resources") or []

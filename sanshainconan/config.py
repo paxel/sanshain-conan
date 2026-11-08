@@ -57,6 +57,7 @@ _KNOWN_TOP = {
     "combine",
     "catalogInfo",
     "autoGa",
+    "annotations",
     "provide",
     "provides",
     "requires",
@@ -64,6 +65,8 @@ _KNOWN_TOP = {
 _KNOWN_PROVIDE = {"file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine"}
 _KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpoints", "format"}
 _KNOWN_ENDPOINT = {"method", "path"}
+_KNOWN_ANNOTATION = {"scope", "name", "value"}
+_ANNOTATION_SCOPES = ("version", "system")
 
 
 def find_unknown_fields(data):
@@ -94,6 +97,7 @@ def find_unknown_fields(data):
         "",
         {
             "provide": lambda entry, path: check(entry, _KNOWN_PROVIDE, f"{path}.", {}),
+            "annotations": each(_KNOWN_ANNOTATION),
             "provides": each(_KNOWN_PROVIDE),
             "requires": each(_KNOWN_REQUIRE, {"endpoints": each(_KNOWN_ENDPOINT)}),
         },
@@ -131,6 +135,8 @@ class SanshainConfig:
         # A provide is GA whenever the build declares a stream (trunk or a
         # tag), unless the ga flag or SANSHAIN_GA says otherwise.
         self.auto_ga = False if data.get("autoGa") is None else data["autoGa"]
+        # As written: the {{NAME}} placeholders are filled per command (annotations.fill_annotations).
+        self.annotations = data.get("annotations")
 
         self.provide = data.get("provide")
         self.provides = data.get("provides", [])
@@ -178,6 +184,7 @@ class SanshainConfig:
             raise ConfigError("Missing required field: sanshainUrl")
         if not isinstance(self.auto_ga, bool):
             raise ConfigError(f"autoGa must be true or false, not {self.auto_ga!r}")
+        self._validate_annotations()
 
         def validate_provide(p, context):
             # A retired entry names its family via apiType alone: the project
@@ -216,6 +223,29 @@ class SanshainConfig:
                     f"{context}: format {req['format']!r} with apiType {req.get('apiType') or 'openapi'!r} "
                     "is not supported; the only combination is apiType: asyncapi with format: openapi"
                 )
+
+    def _validate_annotations(self):
+        """Every entry has the strings scope (version or system), name and
+        value; a violation names its entry. Wrong types are errors, never
+        converted. The size limits are the service's to check, and an extra
+        key is an unknown field, not an error."""
+        if self.annotations is None:
+            self.annotations = []
+            return
+        if not isinstance(self.annotations, list):
+            raise ConfigError("annotations must be a list of entries with scope, name and value")
+        for i, entry in enumerate(self.annotations):
+            if not isinstance(entry, dict):
+                raise ConfigError(f"annotations[{i}]: must be an entry with scope, name and value")
+            name = entry.get("name")
+            context = f"annotations[{i}] ({name})" if isinstance(name, str) else f"annotations[{i}]"
+            for field in ("scope", "name", "value"):
+                if entry.get(field) is None:
+                    raise ConfigError(f"{context}: missing '{field}'")
+                if not isinstance(entry[field], str):
+                    raise ConfigError(f"{context}: '{field}' must be a string, not {entry[field]!r}")
+            if entry["scope"] not in _ANNOTATION_SCOPES:
+                raise ConfigError(f"{context}: scope '{entry['scope']}' is not supported — use version or system")
 
 
 def load_config(path):

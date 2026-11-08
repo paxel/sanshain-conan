@@ -1,3 +1,4 @@
+import json
 import os
 import string
 import sys
@@ -54,6 +55,10 @@ BOTH_STREAMS = "trunk and tag are mutually exclusive - this build is recorded in
 
 ORIGIN_FIELDS = ("build_url", "change_url", "tickets", "note")
 ORIGIN_DROPPED_WARNING = "Sanshain Service before 2.9.0 does not take the build's origin; providing without it"
+ANNOTATIONS_DROPPED_WARNING = "Sanshain Service before 2.13.0 does not take annotations; sending without them"
+# Matched exactly: the refusal of a 2.9-2.12 service lists every field it
+# knows after "expected one of", so a bare field name is not enough.
+ANNOTATIONS_REFUSED = "unknown field `annotations`"
 
 
 def _first(*values):
@@ -237,6 +242,8 @@ class SanshainClient:
         if self.token:
             self.headers["Authorization"] = f"Bearer {self.token}"
         self.verify = not insecure
+        # Set once the service refused annotations: later calls send none.
+        self.annotations_refused = False
 
     def get_server_version(self):
         """Return the server's own build version string, or None if unreachable."""
@@ -335,6 +342,34 @@ class SanshainClient:
 
         raise SanshainError(f"Request failed with status {status}: {sanitized_body}")
 
+    def _annotations_to_send(self, annotations, provide):
+        """What a call may send of the annotations: all of them on a provide,
+        only the system ones on any other call (the service refuses a version
+        one there), and none once the service refused them."""
+        if self.annotations_refused or not annotations:
+            return []
+        if provide:
+            return list(annotations)
+        return [a for a in annotations if a.get("scope") == "system"]
+
+    def _with_annotations(self, payload, annotations, provide):
+        send = self._annotations_to_send(annotations, provide)
+        if send:
+            payload["annotations"] = send
+        return payload
+
+    def _refused_annotations(self, response, sent, status):
+        """Whether a call that sent annotations was refused by an older
+        service naming them, with the given status. From then on this client
+        sends none; the first refusal prints the warning, a plain log line
+        strict mode does not fail on (like the origin fallback)."""
+        if not sent or response.status_code != status or ANNOTATIONS_REFUSED not in (response.text or ""):
+            return False
+        if not self.annotations_refused:
+            self.annotations_refused = True
+            print(f"⚠ {ANNOTATIONS_DROPPED_WARNING}", file=sys.stderr)
+        return True
+
     @staticmethod
     def _apply_stream(payload, trunk, tag):
         # Absent fields rather than false/null: the server defaults them and
@@ -345,7 +380,7 @@ class SanshainClient:
             payload["tag"] = tag
         return payload
 
-    def provide(self, producer_name, openapi_yaml, stability, trunk=False, tag=None, origin=None):
+    def provide(self, producer_name, openapi_yaml, stability, trunk=False, tag=None, origin=None, annotations=None):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -356,9 +391,12 @@ class SanshainClient:
             tag,
         )
         payload.update(origin or {})
+        self._with_annotations(payload, annotations, provide=True)
         return self._post_provide("/provide", payload, producer_name)
 
-    def provide_asyncapi(self, producer_name, asyncapi_yaml, stability, trunk=False, tag=None, origin=None):
+    def provide_asyncapi(
+        self, producer_name, asyncapi_yaml, stability, trunk=False, tag=None, origin=None, annotations=None
+    ):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -369,9 +407,12 @@ class SanshainClient:
             tag,
         )
         payload.update(origin or {})
+        self._with_annotations(payload, annotations, provide=True)
         return self._post_provide("/provide/asyncapi", payload, producer_name)
 
-    def provide_proto(self, producer_name, proto_content, stability, trunk=False, tag=None, origin=None):
+    def provide_proto(
+        self, producer_name, proto_content, stability, trunk=False, tag=None, origin=None, annotations=None
+    ):
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -382,14 +423,16 @@ class SanshainClient:
             tag,
         )
         payload.update(origin or {})
+        self._with_annotations(payload, annotations, provide=True)
         return self._post_provide("/provide/grpc", payload, producer_name)
 
     def retire(self, producer_name, api_type=None, dry_run=False):
         """Declare that this Producer no longer provides an API family.
 
         An ordinary provide call for that family carrying `retired: true` and
-        no document — it deliberately has no way to carry a body, a stability
-        or a stream, which the server refuses alongside `retired` with 400.
+        no document — it deliberately has no way to carry a body, a stability,
+        a stream or annotations, which the server refuses alongside `retired`
+        with 400.
         Gated like releasing: the caller needs the 'releaser' role or a
         maintainer grant on this Producer, or the server answers 403.
         """
@@ -404,19 +447,31 @@ class SanshainClient:
         return self._post_provide(path, payload, producer_name)
 
     def _post_provide(self, path, payload, producer_name):
-        response = requests.post(
-            f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
-        )
-        # A service before 2.9.0 refuses the origin fields by name: the provide
-        # must not fail for a fact the service cannot store, so it is repeated
-        # without them.
-        if response.status_code == 422 and any(f in payload for f in ORIGIN_FIELDS):
-            if any(f"unknown field `{f}`" in (response.text or "") for f in ORIGIN_FIELDS):
+        def post(body):
+            return requests.post(
+                f"{self.url}{path}", json=body, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
+            )
+
+        response = post(payload)
+        # An older service refuses a field it does not know by name, one field
+        # per answer: annotations before 2.13.0, the origin before 2.9.0. The
+        # provide must not fail for a fact the service cannot store, so it is
+        # repeated without that field; a 2.8 service refuses both, in either
+        # order. Annotations first: the refusal of a 2.9-2.12 service lists
+        # the origin fields among those it expects.
+        for _ in range(2):
+            if response.status_code != 422:
+                break
+            if self._refused_annotations(response, payload.get("annotations"), 422):
+                payload = {k: v for k, v in payload.items() if k != "annotations"}
+            elif any(f in payload for f in ORIGIN_FIELDS) and any(
+                f"unknown field `{f}`" in (response.text or "") for f in ORIGIN_FIELDS
+            ):
                 print(f"⚠ {ORIGIN_DROPPED_WARNING}", file=sys.stderr)
                 payload = {k: v for k, v in payload.items() if k not in ORIGIN_FIELDS}
-                response = requests.post(
-                    f"{self.url}{path}", json=payload, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
-                )
+            else:
+                break
+            response = post(payload)
 
         def finish(response):
             self._handle_response(response, producer_name)
@@ -477,6 +532,7 @@ class SanshainClient:
         trunk=False,
         tag=None,
         fmt=None,
+        annotations=None,
     ):
         # The bundle endpoint reads the stream from the body — its handler has
         # no query extractor, so query parameters would be silently dropped and
@@ -492,18 +548,28 @@ class SanshainClient:
             trunk,
             tag,
         )
+        # The requiring Consumer's annotations, system scope only.
+        self._with_annotations(payload, annotations, provide=False)
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
         if etag:
             headers["If-None-Match"] = etag
-        response = requests.post(
-            f"{self.url}/require-bundle",
-            json=payload,
-            params={"format": fmt} if fmt else None,
-            headers=headers,
-            verify=self.verify,
-            timeout=HTTP_TIMEOUT,
-        )
+
+        def post(body):
+            return requests.post(
+                f"{self.url}/require-bundle",
+                json=body,
+                params={"format": fmt} if fmt else None,
+                headers=headers,
+                verify=self.verify,
+                timeout=HTTP_TIMEOUT,
+            )
+
+        response = post(payload)
+        # A service before 2.13.0 refuses the annotations field by name (422).
+        if self._refused_annotations(response, payload.get("annotations"), 422):
+            payload = {k: v for k, v in payload.items() if k != "annotations"}
+            response = post(payload)
         return self._warned_call(response, lambda r: self._finish_require(r, producer_name, fmt))
 
     def require(
@@ -518,9 +584,10 @@ class SanshainClient:
         trunk=False,
         tag=None,
         fmt=None,
+        annotations=None,
     ):
         # Unlike the bundle, the single-endpoint require reads its stream from
-        # the query string.
+        # the query string — and its annotations, as a JSON array.
         params = self._apply_stream(
             {
                 "consumername": consumer_name,
@@ -534,6 +601,9 @@ class SanshainClient:
         )
         if fmt:
             params["format"] = fmt
+        sent = self._annotations_to_send(annotations, provide=False)
+        if sent:
+            params["annotations"] = json.dumps(sent, separators=(",", ":"), ensure_ascii=False)
         headers = self.headers.copy()
         headers["Accept-Encoding"] = "gzip"
         if etag:
@@ -545,13 +615,21 @@ class SanshainClient:
             url = f"{self.url}/require/grpc"
 
         response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT)
+        # A service before 2.13.0 refuses the unknown annotations parameter
+        # with 400 — checked before the format refusal, since it lists format
+        # among the fields it expects.
+        if self._refused_annotations(response, sent, 400):
+            params = {k: v for k, v in params.items() if k != "annotations"}
+            response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT)
         return self._warned_call(response, lambda r: self._finish_require(r, producer_name, fmt))
 
-    def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo"):
+    def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo", annotations=None):
         """Record the system's periphery from its Backstage catalog-info.yaml (PUT /catalog/<system>).
 
         Carries `trunk: true` only for a trunk build and never a tag: the
-        endpoint answers 422 to unknown fields. Needs Sanshain Service 2.4.0.
+        endpoint answers 422 to unknown fields. Needs Sanshain Service 2.4.0;
+        the system's annotations (system scope only) need 2.13.0, and an older
+        service gets the push without them.
 
         A file Sanshain cannot read is no failure: the answer is a 200 with
         `recorded: false` and the reason in a Sanshain-Warning header.
@@ -559,13 +637,21 @@ class SanshainClient:
         payload = {"catalog_info_yaml": catalog_info_yaml}
         if trunk:
             payload["trunk"] = True
-        response = requests.put(
-            f"{self.url}/catalog/{quote(system_name, safe='')}",
-            json=payload,
-            headers=self.headers,
-            verify=self.verify,
-            timeout=HTTP_TIMEOUT,
-        )
+        self._with_annotations(payload, annotations, provide=False)
+
+        def put(body):
+            return requests.put(
+                f"{self.url}/catalog/{quote(system_name, safe='')}",
+                json=body,
+                headers=self.headers,
+                verify=self.verify,
+                timeout=HTTP_TIMEOUT,
+            )
+
+        response = put(payload)
+        if self._refused_annotations(response, payload.get("annotations"), 422):
+            payload = {k: v for k, v in payload.items() if k != "annotations"}
+            response = put(payload)
         warnings = self._report_warnings(response)
         try:
             if response.status_code == 404:

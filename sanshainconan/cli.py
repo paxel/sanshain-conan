@@ -29,6 +29,14 @@ def format_version_conflict(error, spec_file, api_type):
     )
 
 
+def etag_for(cache, key, output_file):
+    """The ETag to send as If-None-Match: none when the output file is gone,
+    so the answer is a 200 that writes it again instead of a 304 that leaves it
+    missing."""
+    entry = cache.get_require_entry(key) if os.path.exists(output_file) else None
+    return entry.get("etag") if entry else None
+
+
 def warn(text):
     print(f"⚠ {text}")
 
@@ -361,11 +369,13 @@ def main():
                 )
                 os.makedirs(output_path, exist_ok=True)
 
+                ext = "proto" if api_type in ("proto", "grpc") else "yaml"
+                output_file = os.path.join(output_path, f"{service_name}.{ext}")
+
                 try:
                     if len(endpoints) > 1:
-                        cache_key = SanshainCache.require_bundle_key(service_name, version, fmt)
-                        cached_entry = cache.get_require_entry(cache_key)
-                        cached_etag = cached_entry.get("etag") if cached_entry else None
+                        cache_key = SanshainCache.require_bundle_key(service_name, version, fmt, output_dir)
+                        cached_etag = etag_for(cache, cache_key, output_file)
 
                         result = client.require_bundle(
                             config.service_name,
@@ -381,9 +391,10 @@ def main():
                         )
                     else:
                         ep = endpoints[0]
-                        cache_key = SanshainCache.require_key(service_name, version, ep["method"], ep["path"], fmt)
-                        cached_entry = cache.get_require_entry(cache_key)
-                        cached_etag = cached_entry.get("etag") if cached_entry else None
+                        cache_key = SanshainCache.require_key(
+                            service_name, version, ep["method"], ep["path"], fmt, output_dir
+                        )
+                        cached_etag = etag_for(cache, cache_key, output_file)
 
                         result = client.require(
                             config.service_name,
@@ -403,8 +414,6 @@ def main():
                         print(f"⏭ {service_name} spec unchanged (304), skipping code generation.")
                         continue
 
-                    ext = "proto" if api_type in ("proto", "grpc") else "yaml"
-                    output_file = os.path.join(output_path, f"{service_name}.{ext}")
                     # Binary: the server's bytes as they are, no newline translation.
                     with open(output_file, "wb") as f:
                         f.write(result["body"])

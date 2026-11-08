@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A require with `apiType: grpc` is saved as `.proto` (it was `.yaml`) by the CLI and the `conanfile.py` helper, and its bundle sends `api_type: proto`, the spelling the service's contract names.
 - Best effort softens failed calls only, the same in provide, require and catalog: an unreadable or invalid `sanshain.yaml` (1.x fields and an unsupported provide `apiType` included) now fails also with best effort, and a failed provide no longer stops the next `provides` entry, in the CLI and in the `conanfile.py` helper's `provide()`, which softened nothing before.
 - A `403` on provide or retire names the releaser role only when the service refused for want of it; any other `403`, such as a read-only token's, shows the service's message alone.
+- The require ETag cache in `.sanshain-cache/state.json` is kept per output directory: the same endpoint required into two directories is written to both instead of the second getting a `304` and staying empty, and a deleted output file is fetched again instead of being skipped.
 
 ---
 

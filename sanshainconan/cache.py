@@ -1,5 +1,6 @@
 import json
 import os
+import posixpath
 from datetime import datetime, timezone
 
 DEFAULT_CACHE_DIR = ".sanshain-cache"
@@ -40,13 +41,22 @@ class SanshainCache:
         self.state["requires"][key] = {"etag": etag, "last_fetched": datetime.now(timezone.utc).isoformat()}
 
     @staticmethod
-    def require_key(service_name, version, method, path, fmt=None):
-        # The format is part of the key, so the AsyncAPI and the OpenAPI
-        # rendering of the same pin never share an ETag.
-        key = f"{service_name}|{version}|{method}|{path}"
-        return f"{key}|format={fmt}" if fmt else key
+    def require_key(service_name, version, method, path, fmt=None, output_dir=None):
+        # The format and the output directory are part of the key, so neither
+        # the AsyncAPI and the OpenAPI rendering of the same pin nor two
+        # directories it is written to share an ETag.
+        return _suffixed(f"{service_name}|{version}|{method}|{path}", fmt, output_dir)
 
     @staticmethod
-    def require_bundle_key(service_name, version, fmt=None):
-        key = f"{service_name}|{version}|bundle"
-        return f"{key}|format={fmt}" if fmt else key
+    def require_bundle_key(service_name, version, fmt=None, output_dir=None):
+        return _suffixed(f"{service_name}|{version}|bundle", fmt, output_dir)
+
+
+def _suffixed(key, fmt, output_dir):
+    if fmt:
+        key = f"{key}|format={fmt}"
+    if output_dir:
+        # As written in sanshain.yaml, with forward slashes and normalized.
+        normalized = posixpath.normpath(str(output_dir).replace("\\", "/"))
+        key = f"{key}|out={normalized}"
+    return key

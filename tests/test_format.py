@@ -230,8 +230,8 @@ class TestCliFormat(FormatProject):
         with open(os.path.join(self.folder, "rest", "events.yaml")) as f:
             self.assertEqual(f.read(), OPENAPI)
         requires = SanshainCache().state["requires"]
-        self.assertEqual(requires["events|1.0.0|PUB|user/signup"]["etag"], '"a"')
-        self.assertEqual(requires["events|1.0.0|PUB|user/signup|format=openapi"]["etag"], '"o"')
+        self.assertEqual(requires["events|1.0.0|PUB|user/signup|out=async"]["etag"], '"a"')
+        self.assertEqual(requires["events|1.0.0|PUB|user/signup|format=openapi|out=rest"]["etag"], '"o"')
 
     def test_wrong_api_type_is_rejected_before_any_call(self):
         config_file = self.write_config([entry(format="openapi")])

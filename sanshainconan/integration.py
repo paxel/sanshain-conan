@@ -305,4 +305,4 @@ class Sanshain:
                 self.conanfile.output.error(f"Sanshain: Error requiring {service_name}: {e}")
                 if not self.config.best_effort:
                     raise
-                self.conanfile.output.warn("Sanshain: Continuing (best effort)")
+                self.conanfile.output.warning("Sanshain: Continuing (best effort)")

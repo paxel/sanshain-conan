@@ -21,7 +21,7 @@ Sanshain Conan Plugin allows you to:
 Sanshain 2.0 replaced branches with producer-declared versions:
 
 -   **The version lives in the spec file.** For OpenAPI/AsyncAPI it is read from `info.version`; proto files must carry a `// sanshain-version: MAJOR.MINOR.PATCH` comment. Strict three-part semver, no suffixes.
--   **Stability is declared on every provide.** Every provide is a `snapshot` (overwritable work-in-progress) unless the ga switch is set — then it is `ga` (immutable; the number is permanently claimed).
+-   **Stability is declared on every provide.** Every provide is a `snapshot` (overwritable work-in-progress) unless the ga switch is set, or `autoGa: true` and the build declares trunk or a tag — then it is `ga` (immutable; the number is permanently claimed).
 -   **Consumers pin exact versions.** Each `requires` entry names the exact `version` to build against. No ranges, no `latest`, no fallback, no waiting.
 
 ## Installation

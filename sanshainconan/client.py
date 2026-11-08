@@ -59,6 +59,8 @@ ANNOTATIONS_DROPPED_WARNING = "Sanshain Service before 2.13.0 does not take anno
 # Matched exactly: the refusal of a 2.9-2.12 service lists every field it
 # knows after "expected one of", so a bare field name is not enough.
 ANNOTATIONS_REFUSED = "unknown field `annotations`"
+# The text of the service's 403 when the caller lacks the releaser role.
+RELEASER_REFUSAL = "requires the 'releaser' role"
 
 
 def _first(*values):
@@ -328,6 +330,11 @@ class SanshainClient:
             )
         if status == 422:
             raise SanshainError(f"Invalid request shape (422): {sanitized_body}")
+        # Only the refusal for want of the role gets the hint: both service
+        # messages (GA provide, retire) contain this text. Any other 403, such
+        # as a read-only token's, already says what to do.
+        if status == 403 and RELEASER_REFUSAL not in body:
+            raise SanshainError(f"Refused (403): {sanitized_body}")
         if status == 403:
             # The remedy is a role grant — nothing the Producer can change in
             # its own repository — so the message has to name it.

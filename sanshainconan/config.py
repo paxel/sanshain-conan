@@ -67,6 +67,12 @@ _KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpo
 _KNOWN_ENDPOINT = {"method", "path"}
 _KNOWN_ANNOTATION = {"scope", "name", "value"}
 _ANNOTATION_SCOPES = ("version", "system")
+# The apiType spellings a provide takes; grpc means proto.
+_API_TYPES = ("openapi", "asyncapi", "proto", "grpc")
+
+
+def _unsupported_api_type(api_type):
+    return f"unsupported apiType {api_type!r} — use openapi, asyncapi or proto (grpc means proto)"
 
 
 def find_unknown_fields(data):
@@ -187,6 +193,8 @@ class SanshainConfig:
         self._validate_annotations()
 
         def validate_provide(p, context):
+            if "apiType" in p and p["apiType"] not in _API_TYPES:
+                raise ConfigError(f"{context}: {_unsupported_api_type(p['apiType'])}")
             # A retired entry names its family via apiType alone: the project
             # no longer provides it, so demanding a spec file would force a
             # dead file to stay on disk forever.

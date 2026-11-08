@@ -191,12 +191,13 @@ class TestCliCat(CliTestCase):
                 self.assertIn(f"Error: {error}", out)
                 client_cls.return_value.require.assert_not_called()
 
-    def test_best_effort_shows_the_cat_then_continues(self):
+    def test_best_effort_shows_the_cat_then_fails_on_the_broken_config(self):
         self.write(BASE + "provide:\n  fiel: a.yaml\n")
         code, out, err, _ = self.run_cli("--best-effort")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertEqual(err, cat("sanshain.yaml: unknown field 'provide.fiel' - ignored"))
-        self.assertIn("Warning loading config: At least one of file", out)
+        self.assertIn("Error: At least one of file", out)
+        self.assertNotIn("Continuing (best effort)", out)
 
     def test_strict_fails_on_the_unknown_field_before_other_validation(self):
         self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))

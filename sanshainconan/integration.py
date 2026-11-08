@@ -177,24 +177,39 @@ class Sanshain:
             )
             return True
 
+        def each(step, *step_args):
+            # One provide or retire. Under bestEffort its failure is a warning
+            # and the next entry still runs, as require() does per entry.
+            try:
+                return step(*step_args)
+            except StrictError:
+                raise
+            except Exception as e:
+                if not self.config.best_effort:
+                    self.conanfile.output.error(f"Sanshain: {e}")
+                    raise
+                self.conanfile.output.warning(f"Sanshain: {e}")
+                self.conanfile.output.warning("Sanshain: Continuing (best effort)")
+                return False
+
         for p in provides:
             if p.get("retired"):
-                if do_retire(p.get("apiType")):
+                if each(do_retire, p.get("apiType")):
                     provided = True
                 continue
             if "file" in p:
-                if do_provide(p["file"], p.get("apiType")):
+                if each(do_provide, p["file"], p.get("apiType")):
                     provided = True
 
             # Backward compatibility
             if "openApiFile" in p:
-                if do_provide(p["openApiFile"], "openapi"):
+                if each(do_provide, p["openApiFile"], "openapi"):
                     provided = True
             if "asyncApiFile" in p:
-                if do_provide(p["asyncApiFile"], "asyncapi"):
+                if each(do_provide, p["asyncApiFile"], "asyncapi"):
                     provided = True
             if "protoFile" in p:
-                if do_provide(p["protoFile"], "proto"):
+                if each(do_provide, p["protoFile"], "proto"):
                     provided = True
 
         if provided:

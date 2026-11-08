@@ -113,23 +113,15 @@ def main():
         config = None
         try:
             config = load_config(args.config)
-        except Exception as e:
+        except ConfigError as e:
             # The cat comes first, also when the config then fails.
-            if isinstance(e, ConfigError) and e.unknown_fields:
+            if e.unknown_fields:
                 for line in puzzled_cat(e.unknown_fields, e.strict):
                     print(line, file=sys.stderr)
-                # Unknown fields under strict: best-effort does not soften it.
                 if e.strict:
                     sys.exit(1)
-            resolved_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
-            if resolved_best_effort:
-                print(f"Warning loading config: {e}")
-                # Create a minimal config object
-                from .config import SanshainConfig
-
-                config = SanshainConfig({"sanshainUrl": "http://localhost:8080"})
-            else:
-                raise
+            # A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
+            raise
 
         if config.unknown_fields:
             for line in puzzled_cat(config.unknown_fields, False):
@@ -190,6 +182,20 @@ def main():
             # The stream is resolved above: autoGa makes a provide GA on a build that declares one.
             stability = resolve_stability(args.ga, config.auto_ga, stream_declared(args.trunk, args.tag))
             provided = False
+
+            def each(step, *step_args):
+                # One provide or retire. Under best effort its failure is a
+                # warning and the next entry still runs, as require does per entry.
+                try:
+                    return step(*step_args)
+                except StrictError:
+                    raise
+                except Exception as e:
+                    if not config.best_effort:
+                        raise
+                    print(f"Error: {e}")
+                    print("Continuing (best effort)")
+                    return False
 
             def do_provide_file(file_path, api_type):
                 full_path = os.path.join(config_dir, file_path)
@@ -294,22 +300,22 @@ def main():
 
             for p in provides:
                 if p.get("retired"):
-                    if do_retire(p.get("apiType")):
+                    if each(do_retire, p.get("apiType")):
                         provided = True
                     continue
                 if "file" in p:
-                    if do_provide_file(p["file"], p.get("apiType")):
+                    if each(do_provide_file, p["file"], p.get("apiType")):
                         provided = True
 
                 # Backward compatibility
                 if "openApiFile" in p:
-                    if do_provide_file(p["openApiFile"], "openapi"):
+                    if each(do_provide_file, p["openApiFile"], "openapi"):
                         provided = True
                 if "asyncApiFile" in p:
-                    if do_provide_file(p["asyncApiFile"], "asyncapi"):
+                    if each(do_provide_file, p["asyncApiFile"], "asyncapi"):
                         provided = True
                 if "protoFile" in p:
-                    if do_provide_file(p["protoFile"], "proto"):
+                    if each(do_provide_file, p["protoFile"], "proto"):
                         provided = True
 
             if not provided:

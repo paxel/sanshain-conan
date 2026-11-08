@@ -281,7 +281,7 @@ class TestCliFormat(FormatProject):
 class TestHelperFormat(FormatProject):
     def helper(self):
         conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, base_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
         )
         with mock.patch.dict(os.environ, {}, clear=True):
             return Sanshain(conanfile)

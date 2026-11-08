@@ -219,7 +219,7 @@ class TestHelperCat(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp()
         self.conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, base_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
         )
 
     def tearDown(self):

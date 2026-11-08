@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A `403` on provide or retire names the releaser role only when the service refused for want of it; any other `403`, such as a read-only token's, shows the service's message alone.
 - The require ETag cache in `.sanshain-cache/state.json` is kept per output directory: the same endpoint required into two directories is written to both instead of the second getting a `304` and staying empty, and a deleted output file is fetched again instead of being skipped.
 - An unknown `requires[].apiType` fails as a configuration error when `sanshain.yaml` is loaded, before any call; it was sent to `/require` as OpenAPI.
+- `Sanshain(self)` without `config_path` falls back to the recipe's `source_folder` when it has neither an export-sources nor a recipe folder; it named `base_folder`, which Conan 2's `ConanFile` lacks, and failed with an `AttributeError`.
 
 ---
 

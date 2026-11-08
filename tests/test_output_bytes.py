@@ -74,7 +74,7 @@ class TestRequireBytes(unittest.TestCase):
     def test_helper_writes_the_bytes(self, mock_get):
         mock_get.return_value = answer()
         conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, base_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
         )
         with mock.patch.dict(os.environ, {}, clear=True):
             Sanshain(conanfile).require()

@@ -53,7 +53,7 @@ class TestEnvFlag(unittest.TestCase):
         with open(os.path.join(folder, "sanshain.yaml"), "w") as f:
             yaml.dump({"sanshainUrl": "http://localhost:8080", "serviceName": "svc"}, f)
         conanfile = SimpleNamespace(
-            export_sources_folder=folder, recipe_folder=folder, base_folder=folder, output=mock.Mock()
+            export_sources_folder=folder, recipe_folder=folder, source_folder=folder, output=mock.Mock()
         )
         for value, expected in (("1", "ga"), (" TRUE ", "ga"), ("yes", "snapshot")):
             with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_GA": value}, clear=True):

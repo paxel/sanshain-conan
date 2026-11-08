@@ -40,9 +40,10 @@ class Sanshain:
     def __init__(self, conanfile, config_path=None):
         self.conanfile = conanfile
         # Without an explicit config_path, sanshain.yaml is expected in the
-        # project root; base_folder is usually the project root in Conan 2.
+        # project root: the export-sources folder, else the recipe folder, else
+        # the source folder. Conan 2's ConanFile has no base_folder.
         if not config_path:
-            root = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.base_folder
+            root = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.source_folder
             config_path = os.path.join(root, "sanshain.yaml")
 
         # Every relative path in sanshain.yaml (file, outputDirectory, ...)

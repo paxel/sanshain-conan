@@ -67,7 +67,7 @@ _KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpo
 _KNOWN_ENDPOINT = {"method", "path"}
 _KNOWN_ANNOTATION = {"scope", "name", "value"}
 _ANNOTATION_SCOPES = ("version", "system")
-# The apiType spellings a provide takes; grpc means proto.
+# The apiType spellings provides and requires take; grpc means proto.
 _API_TYPES = ("openapi", "asyncapi", "proto", "grpc")
 
 
@@ -216,6 +216,8 @@ class SanshainConfig:
                 raise ConfigError("Missing required field in require entry: serviceName")
             name = req["serviceName"]
             context = f"requires[{i}] ({name})"
+            if "apiType" in req and req["apiType"] not in _API_TYPES:
+                raise ConfigError(f"{context}: {_unsupported_api_type(req['apiType'])}")
             if "version" not in req:
                 raise ConfigError(
                     f"{context}: missing 'version' — Sanshain 2.0 pins exact versions; "

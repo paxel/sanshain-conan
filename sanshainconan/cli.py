@@ -4,16 +4,17 @@ import sys
 
 from .cache import SanshainCache
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, VersionConflictError, resolve_origin, resolve_stream
+from .client import (
+    SanshainClient,
+    SanshainError,
+    StrictError,
+    VersionConflictError,
+    resolve_origin,
+    resolve_stability,
+    resolve_stream,
+    stream_declared,
+)
 from .config import ConfigError, env_flag, load_config, puzzled_cat
-
-
-def resolve_stability(ga_flag=False):
-    """Every provide is a snapshot unless the ga switch is set explicitly:
-    the --ga flag or the environment variable SANSHAIN_GA=true (or 1)."""
-    if ga_flag or env_flag("SANSHAIN_GA"):
-        return "ga"
-    return "snapshot"
 
 
 def format_version_conflict(error, spec_file, api_type):
@@ -35,7 +36,11 @@ def main():
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
-    parser.add_argument("--ga", action="store_true", help="Provide as ga (immutable release); default is snapshot")
+    parser.add_argument(
+        "--ga",
+        action="store_true",
+        help="Provide as ga (immutable release); default is snapshot, or ga on a trunk or tag build with autoGa",
+    )
     parser.add_argument(
         "--trunk",
         action="store_true",
@@ -152,7 +157,8 @@ def main():
                 return
 
             config_dir = os.path.dirname(os.path.abspath(args.config))
-            stability = resolve_stability(args.ga)
+            # The stream is resolved above: autoGa makes a provide GA on a build that declares one.
+            stability = resolve_stability(args.ga, config.auto_ga, stream_declared(args.trunk, args.tag))
             provided = False
 
             def do_provide_file(file_path, api_type):

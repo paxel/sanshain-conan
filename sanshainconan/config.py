@@ -39,7 +39,7 @@ _BASE_VERSION_HINT = (
 )
 _RELEASE_BRANCHES_HINT = (
     "'releaseBranches' is no longer supported — stability is decided by the ga switch "
-    "(SANSHAIN_GA=true or --ga) in Sanshain 2.0; remove it"
+    "(SANSHAIN_GA=true or --ga) in Sanshain 2.0, or by autoGa: true on a trunk or tag build; remove it"
 )
 
 
@@ -56,6 +56,7 @@ _KNOWN_TOP = {
     "insecure",
     "combine",
     "catalogInfo",
+    "autoGa",
     "provide",
     "provides",
     "requires",
@@ -127,6 +128,9 @@ class SanshainConfig:
         self.best_effort = data.get("bestEffort", False)
         self.strict = data.get("strict", False)
         self.catalog_info = data.get("catalogInfo")
+        # A provide is GA whenever the build declares a stream (trunk or a
+        # tag), unless the ga flag or SANSHAIN_GA says otherwise.
+        self.auto_ga = False if data.get("autoGa") is None else data["autoGa"]
 
         self.provide = data.get("provide")
         self.provides = data.get("provides", [])
@@ -172,6 +176,8 @@ class SanshainConfig:
     def _validate(self, data):
         if not self.sanshain_url:
             raise ConfigError("Missing required field: sanshainUrl")
+        if not isinstance(self.auto_ga, bool):
+            raise ConfigError(f"autoGa must be true or false, not {self.auto_ga!r}")
 
         def validate_provide(p, context):
             # A retired entry names its family via apiType alone: the project

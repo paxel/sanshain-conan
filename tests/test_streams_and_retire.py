@@ -160,6 +160,7 @@ class TestRetire(unittest.TestCase):
         self.assertIn("releaser", message)
         self.assertIn("maintainer", message)
         self.assertIn("snapshot", message)
+        self.assertIn("autoGa off (or setting SANSHAIN_GA=false)", message)
 
 
 class TestLineEndings(unittest.TestCase):

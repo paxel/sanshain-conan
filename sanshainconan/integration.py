@@ -15,14 +15,24 @@ Conan remote that was never stood up:
 Stability and stream are read from the environment, because a `conan install`
 carries no plugin flags: `SANSHAIN_GA=true` publishes GA, `SANSHAIN_TRUNK=true`
 declares the trunk stream and `SANSHAIN_TAG=<branch>` a sanshain-branch. All
-three are pipeline concerns and never live in `sanshain.yaml`.
+three are pipeline concerns and never live in `sanshain.yaml`; only `autoGa:
+true` there may make a provide GA on a build that declares a stream, unless
+`SANSHAIN_GA` is set (`false` keeps a snapshot).
 """
 
 import os
 
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, resolve_origin, resolve_stream
-from .config import ConfigError, env_flag, load_config, puzzled_cat
+from .client import (
+    SanshainClient,
+    SanshainError,
+    StrictError,
+    resolve_origin,
+    resolve_stability,
+    resolve_stream,
+    stream_declared,
+)
+from .config import ConfigError, load_config, puzzled_cat
 
 
 class Sanshain:
@@ -52,10 +62,6 @@ class Sanshain:
                 conanfile.output.warning(line)
         # Every Sanshain-Warning header is a warning; under strict it fails the call.
         self.client = SanshainClient(self.config.sanshain_url, on_warning=self._warn, strict=self.config.strict)
-        # Every provide is a snapshot unless the ga switch is set
-        # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the
-        # whole mechanism.
-        self.stability = "ga" if env_flag("SANSHAIN_GA") else "snapshot"
         # Why this build provides: build and change URL from the runner,
         # tickets and note from SANSHAIN_TICKETS / SANSHAIN_NOTE.
         self.origin = resolve_origin()
@@ -64,6 +70,9 @@ class Sanshain:
         except StrictError as e:
             conanfile.output.error(f"Sanshain: {e}")
             raise
+        # After the stream: SANSHAIN_GA decides when set, else autoGa makes a
+        # provide GA on a build that declares trunk or a tag; else snapshot.
+        self.stability = resolve_stability(auto_ga=self.config.auto_ga, declared=stream_declared())
 
     def _warn(self, text):
         self.conanfile.output.warning(f"Sanshain: {text}")

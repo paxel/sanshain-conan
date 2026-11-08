@@ -46,7 +46,7 @@ An unknown field in `sanshain.yaml` (usually a typo) is reported as a warning; w
 Relative paths in `sanshain.yaml` (the spec `file`s, `outputDirectory`) resolve against the folder `sanshain.yaml` was loaded from; absolute paths stay absolute.
 
 ### `sanshain.provide()`
-Reads the `provide` section from `sanshain.yaml` and uploads the specification to the Sanshain service. The version is read from the spec file itself (`info.version`, or the `// sanshain-version:` comment for proto); the stability is `snapshot` unless `SANSHAIN_GA=true` is set.
+Reads the `provide` section from `sanshain.yaml` and uploads the specification to the Sanshain service. The version is read from the spec file itself (`info.version`, or the `// sanshain-version:` comment for proto); the stability is `snapshot` unless `SANSHAIN_GA=true` is set, or `autoGa: true` in `sanshain.yaml` meets a build that sets `SANSHAIN_TRUNK=true` or `SANSHAIN_TAG` (see below).
 
 ### `sanshain.require()`
 Reads the `requires` section from `sanshain.yaml` and downloads the specifications at each entry's pinned `version` to the specified output directories.
@@ -77,6 +77,8 @@ Every provide is a `snapshot` by default. Release pipelines mark their provides 
 - CLI flag: `--ga`
 
 Set it only on protected-branch (release) pipelines. There is no git or branch detection — the switch is the whole mechanism.
+
+With `autoGa: true` in `sanshain.yaml` a provide is GA whenever the build declares a stream (`SANSHAIN_TRUNK=true` or `SANSHAIN_TAG`, also both). The first of these that is set decides: the `--ga` flag (CLI only), `SANSHAIN_GA` (an explicit `false` keeps a snapshot; empty or absent is unset), `autoGa` with a stream, else `snapshot`. CI declares trunk and tag on its protected pipelines only, which is what makes them GA; the CI token's user needs the `releaser` role, and a trunk build that changes the spec without a version bump fails with `409 immutable_ga` and the proposed version. A retire never carries a stability.
 
 ## Typical Workflow
 

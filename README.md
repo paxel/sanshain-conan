@@ -57,6 +57,7 @@ The plugin uses the standard `sanshain.yaml` file in the project root:
 sanshainUrl: "https://sanshain.example.com"
 serviceName: "my-cpp-service"
 catalogInfo: "catalog-info.yaml"  # optional, pushed by the catalog command
+autoGa: true                      # optional: provide GA on every trunk or tag build
 
 provides:
   - file: "openapi.yaml"        # version read from its info.version
@@ -72,7 +73,7 @@ requires:
 
 Every relative path in `sanshain.yaml` (`file`, `openApiFile`, `asyncApiFile`, `protoFile`, `outputDirectory`, `catalogInfo`) resolves against the folder that contains `sanshain.yaml`, never the working directory; absolute paths stay absolute. A config passed via `--config` (CLI) or `config_path` (Conan helper) therefore finds the same files as one in the current folder.
 
-`sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
+`sanshain.yaml` carries **no stability and no version for provides** — the version travels inside the spec file (`MAJOR[.MINOR[.PATCH]]`, optionally `v`-prefixed; omitted parts are zero and the stored form is always three-part), and stability is decided by the ga switch or by `autoGa` on a trunk or tag build (below). Branch-era fields (`branch`, `timeout`, `baseVersion`, `releaseBranches`) are rejected at parse time with a migration hint.
 
 ### `requires` entry fields
 
@@ -127,11 +128,13 @@ With `strict: true` the same message ends in `rejected (strict)` and the command
 -   `SANSHAIN_URL` overrides `sanshainUrl` from `sanshain.yaml` (and makes it optional there), so the service address can change without a commit.
 -   `SANSHAIN_TOKEN` is sent as the Bearer token.
 -   The switches `SANSHAIN_GA`, `SANSHAIN_TRUNK` and `SANSHAIN_BEST_EFFORT` are on for `true` or `1` (trimmed, case-insensitive); any other value — `yes`, `on`, empty — is off. A CLI flag (`--ga`, `--trunk`, `--best-effort`) turns a switch on regardless of the environment.
+-   `SANSHAIN_GA` set to anything but blank decides the stability, so `SANSHAIN_GA=false` keeps a build a snapshot despite `autoGa`; empty or absent leaves the decision to `autoGa`.
 
 ## Streams: trunk and release branches
 
 Alongside stability, the pipeline declares which dependency graph its calls belong to. Like the
-ga switch this is a property of the invocation and never appears in `sanshain.yaml`:
+ga switch this is a property of the invocation and never appears in `sanshain.yaml` (only
+`autoGa` may say what a declared stream means for stability):
 
 - Trunk CI sets `SANSHAIN_TRUNK=true` (CLI: `--trunk`) — provides mark trunk's current version
   and requires feed the main graph.
@@ -224,6 +227,21 @@ python3 -m sanshainconan.cli provide
 python3 -m sanshainconan.cli --ga provide
 # or: SANSHAIN_GA=true python3 -m sanshainconan.cli provide
 ```
+
+### autoGa: GA on every trunk or tag build
+
+```yaml
+autoGa: true
+```
+
+With `autoGa: true` in `sanshain.yaml` a provide is GA whenever the build declares a stream: trunk (`--trunk` / `SANSHAIN_TRUNK`) or a tag (`--tag` / `SANSHAIN_TAG`), also when it declares both. Without a stream it stays a snapshot, so a developer's laptop never releases. The first of these that is set decides:
+
+1. `--ga` (it can only say GA);
+2. `SANSHAIN_GA` (an explicit `false` counts; empty or absent does not);
+3. `autoGa: true` with trunk or a tag;
+4. `snapshot`.
+
+There is still no branch detection: CI declares trunk and tag on its protected pipelines only, and that is what makes them GA. The CI token's user needs the `releaser` role, and a trunk build that changes the spec without a version bump fails with `409 immutable_ga` and the proposed version: bump the version in the spec file and build again. A retire never carries a stability, `autoGa` or not. The Conan integration reads the same rule from `SANSHAIN_GA`, `SANSHAIN_TRUNK` and `SANSHAIN_TAG`.
 
 ## Usage
 

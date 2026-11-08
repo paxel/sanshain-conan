@@ -114,6 +114,41 @@ def resolve_origin(build_url=None, change_url=None, tickets=None, note=None, env
     return origin
 
 
+def _declared_stream(trunk_flag=False, tag=None):
+    """Trunk and the tag as this build declares them, the flags before SANSHAIN_TRUNK / SANSHAIN_TAG."""
+    trunk = bool(trunk_flag) or env_flag("SANSHAIN_TRUNK")
+    resolved_tag = (tag or os.environ.get("SANSHAIN_TAG") or "").strip() or None
+    return trunk, resolved_tag
+
+
+def stream_declared(trunk_flag=False, tag=None):
+    """Whether the build declares a stream: trunk, a tag, or both — which
+    sends neither (with a warning) but still declared one. This is what makes
+    a provide GA under `autoGa: true`."""
+    trunk, resolved_tag = _declared_stream(trunk_flag, tag)
+    return trunk or resolved_tag is not None
+
+
+def resolve_stability(ga_flag=False, auto_ga=False, declared=False):
+    """The stability of a provide; the first of these that is set decides:
+
+    1. the --ga flag (it can only say ga);
+    2. SANSHAIN_GA when not blank, read like every switch, so an explicit
+       `false` keeps a snapshot;
+    3. `autoGa: true` in sanshain.yaml on a build that declares a stream
+       (`declared`, see stream_declared);
+    4. snapshot.
+
+    There is no git or branch detection: CI declares trunk and tag on its
+    protected pipelines, so only those builds become GA through autoGa.
+    """
+    if ga_flag:
+        return "ga"
+    if (os.environ.get("SANSHAIN_GA") or "").strip():
+        return "ga" if env_flag("SANSHAIN_GA") else "snapshot"
+    return "ga" if auto_ga and declared else "snapshot"
+
+
 def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
     """Resolve which dependency graph this build's calls belong to.
 
@@ -128,8 +163,7 @@ def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
     recorded in no stream. Under strict it raises StrictError before any
     request.
     """
-    trunk = trunk_flag or env_flag("SANSHAIN_TRUNK")
-    resolved_tag = (tag or os.environ.get("SANSHAIN_TAG") or "").strip() or None
+    trunk, resolved_tag = _declared_stream(trunk_flag, tag)
     if trunk and resolved_tag:
         if strict:
             raise StrictError(f"strict: {BOTH_STREAMS}")
@@ -295,7 +329,8 @@ class SanshainClient:
                 "  Publishing GA requires the 'releaser' role; retiring requires it too, or a "
                 f"maintainer grant on '{producer}'. Grant the role to the user or token this "
                 "build authenticates as (administrators and root always hold it), or publish "
-                "as a snapshot by leaving --ga / SANSHAIN_GA unset."
+                "as a snapshot by leaving --ga / SANSHAIN_GA unset and autoGa off (or setting "
+                "SANSHAIN_GA=false)."
             )
 
         raise SanshainError(f"Request failed with status {status}: {sanitized_body}")

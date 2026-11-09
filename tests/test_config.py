@@ -54,6 +54,18 @@ class TestSanshainConfig(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "Config file not found"):
             load_config("nonexistent.yaml")
 
+    def test_a_file_without_a_mapping_of_settings_is_a_config_error_naming_it(self):
+        config_file = os.path.join(self.test_dir, "sanshain.yaml")
+        for text in ("just a string\n", "- sanshainUrl: http://localhost:8080\n", "42\n"):
+            with self.subTest(text=text):
+                with open(config_file, "w") as f:
+                    f.write(text)
+                with self.assertRaises(ConfigError) as ctx:
+                    load_config(config_file)
+                self.assertEqual(
+                    str(ctx.exception), f"{config_file} must be a mapping of settings, such as sanshainUrl: <url>"
+                )
+
     def test_require_missing_version_names_entry_and_hints_migration(self):
         data = self._valid_data()
         del data["requires"][0]["version"]

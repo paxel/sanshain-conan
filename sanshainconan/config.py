@@ -267,6 +267,8 @@ def load_config(path):
             data = yaml.safe_load(f)
             if data is None:
                 raise ConfigError(f"Config file is empty: {path}")
+            if not isinstance(data, dict):
+                raise ConfigError(f"{path} must be a mapping of settings, such as sanshainUrl: <url>")
             return SanshainConfig(data)
     except yaml.YAMLError as e:
         raise ConfigError(f"Failed to parse YAML: {e}")

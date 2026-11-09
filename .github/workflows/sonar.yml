@@ -1,0 +1,39 @@
+# SonarQube Cloud analysis of summer on every push there; the free plan
+# analyses the main branch only. Report only: the quality gate shows on
+# https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan and fails no
+# build. Coverage comes from the same unittest run. What is analysed is in
+# sonar-project.properties.
+#
+# One-time setup: the project paxel_sanshain-conan on SonarQube Cloud with
+# Automatic Analysis off, and the repository secret SQ_TOKEN.
+name: SonarQube Cloud
+
+on:
+  push:
+    branches: [summer]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonar:
+    name: SonarQube Cloud analysis
+    runs-on: ubuntu-latest
+    steps:
+      # The full history for the blame and the new-code period.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: '3.11'
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - name: Tests with coverage
+        run: |
+          uv run --with coverage coverage run --source=sanshainconan -m unittest discover tests
+          uv run --with coverage coverage xml -o coverage.xml
+      - uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SQ_TOKEN }}

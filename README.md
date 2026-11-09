@@ -2,6 +2,10 @@
 
 [![Build and Test](https://github.com/paxel/sanshain-conan/actions/workflows/build.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/build.yml)
 [![Security](https://github.com/paxel/sanshain-conan/actions/workflows/security.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/security.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=coverage)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/paxel/sanshain-conan/badge)](https://scorecard.dev/viewer/?uri=github.com/paxel/sanshain-conan)
 [![PyPI](https://img.shields.io/pypi/v/sanshain-conan)](https://pypi.org/project/sanshain-conan/)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https://raw.githubusercontent.com/paxel/sanshain-conan/summer/pyproject.toml)](https://github.com/paxel/sanshain-conan/blob/summer/pyproject.toml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/paxel/sanshain-conan/blob/summer/LICENSE)

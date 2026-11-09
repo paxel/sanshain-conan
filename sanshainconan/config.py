@@ -128,7 +128,11 @@ def puzzled_cat(fields, strict):
 
 
 class SanshainConfig:
-    def __init__(self, data):
+    def __init__(self, data, best_effort=False):
+        """`best_effort` is best effort from outside the file (--best-effort or
+        SANSHAIN_BEST_EFFORT): under it a file that does not validate is
+        broken and its own strict does not count, so its unknown fields are
+        only reported and the validation error is raised."""
         # SANSHAIN_URL beats the yaml's sanshainUrl: the service address is
         # an environment concern and moves without a commit.
         self.sanshain_url = env_url() or data.get("sanshainUrl")
@@ -149,17 +153,21 @@ class SanshainConfig:
         self.requires = data.get("requires", [])
 
         # Order: legacy-field rejections, then unknown fields (the cat; under
-        # strict they fail here), then the remaining validation — so a typo
-        # that replaces a required field is named before the error it causes.
+        # strict they fail here), then the remaining validation error — so a
+        # typo that replaces a required field is named before the error it causes.
         self._reject_legacy(data)
         self.unknown_fields = find_unknown_fields(data)
-        if self.unknown_fields and self.strict:
-            raise ConfigError(unknown_fields_message(self.unknown_fields, True), self.unknown_fields, strict=True)
         try:
             self._validate(data)
+            invalid = None
         except ConfigError as e:
-            e.unknown_fields = self.unknown_fields
-            raise
+            invalid = e
+        strict = self.strict and not (best_effort and invalid is not None)
+        if self.unknown_fields and strict:
+            raise ConfigError(unknown_fields_message(self.unknown_fields, True), self.unknown_fields, strict=True)
+        if invalid is not None:
+            invalid.unknown_fields = self.unknown_fields
+            raise invalid
 
     @staticmethod
     def _reject_legacy(data):
@@ -258,17 +266,24 @@ class SanshainConfig:
                 raise ConfigError(f"{context}: scope '{entry['scope']}' is not supported — use version or system")
 
 
-def load_config(path):
+def load_config(path, best_effort=False):
+    """Load and validate sanshain.yaml; every reason it cannot be used is a
+    ConfigError. `best_effort` is best effort from outside the file (see
+    SanshainConfig); the conanfile helper has none."""
     if not os.path.exists(path):
         raise ConfigError(f"Config file not found: {path}")
 
     try:
         with open(path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
             data = yaml.safe_load(f)
-            if data is None:
-                raise ConfigError(f"Config file is empty: {path}")
-            if not isinstance(data, dict):
-                raise ConfigError(f"{path} must be a mapping of settings, such as sanshainUrl: <url>")
-            return SanshainConfig(data)
     except yaml.YAMLError as e:
         raise ConfigError(f"Failed to parse YAML: {e}")
+    except OSError as e:
+        raise ConfigError(f"Cannot read config file {path}: {e.strerror or e}")
+    except UnicodeDecodeError as e:
+        raise ConfigError(f"Cannot read config file {path}: {e}")
+    if data is None:
+        raise ConfigError(f"Config file is empty: {path}")
+    if not isinstance(data, dict):
+        raise ConfigError(f"{path} must be a mapping of settings, such as sanshainUrl: <url>")
+    return SanshainConfig(data, best_effort)

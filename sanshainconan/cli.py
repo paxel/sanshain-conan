@@ -80,7 +80,12 @@ def main():
         default=None,
         help="this build belongs to a sanshain-branch — release/hotfix pipelines (also SANSHAIN_TAG)",
     )
-    parser.add_argument("--best-effort", action="store_true", help="Continue on errors")
+    parser.add_argument(
+        "--best-effort",
+        action="store_true",
+        help="turn failed calls, and a missing or broken sanshain.yaml, into warnings and exit 0 "
+        "(also SANSHAIN_BEST_EFFORT=true or 1; bestEffort: true in sanshain.yaml counts for failed calls only)",
+    )
     parser.add_argument(
         "--build-url",
         default=None,
@@ -119,17 +124,26 @@ def main():
 
     try:
         config = None
+        # A missing or broken sanshain.yaml cannot be trusted to say bestEffort,
+        # so only the flag and SANSHAIN_BEST_EFFORT decide for it: best effort
+        # prints the error, calls nothing and exits 0. Strict is read from the
+        # file only, so it never applies here; unknown fields rejected by the
+        # strict of a file that otherwise loads always fail.
+        outside_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
         try:
-            config = load_config(args.config)
-        except ConfigError as e:
+            config = load_config(args.config, best_effort=outside_best_effort)
+        except Exception as e:
             # The cat comes first, also when the config then fails.
-            if e.unknown_fields:
+            if isinstance(e, ConfigError) and e.unknown_fields:
                 for line in puzzled_cat(e.unknown_fields, e.strict):
                     print(line, file=sys.stderr)
                 if e.strict:
                     sys.exit(1)
-            # A broken sanshain.yaml is a configuration error: best effort covers failed calls only.
-            raise
+            if not outside_best_effort:
+                raise
+            print(f"Error: {e}")
+            print("Continuing (best effort)")
+            return
 
         if config.unknown_fields:
             for line in puzzled_cat(config.unknown_fields, False):

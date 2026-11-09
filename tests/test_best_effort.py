@@ -1,4 +1,5 @@
-"""Best effort softens failed calls only, per entry; a broken sanshain.yaml and strict always fail."""
+"""Best effort softens failed calls, per entry, and a missing or broken sanshain.yaml when it comes
+from the flag or SANSHAIN_BEST_EFFORT; strict and the conanfile helper's broken file always fail."""
 
 import contextlib
 import io
@@ -22,6 +23,23 @@ TWO_PROVIDES = {
     "serviceName": "svc",
     "provides": [{"file": "openapi.yaml"}, {"file": "asyncapi.yaml", "apiType": "asyncapi"}],
 }
+REQUIRE_WITHOUT_VERSION = "requires:\n  - serviceName: users\n    outputDirectory: gen\n    endpoints: []\n"
+_BASE = "sanshainUrl: http://localhost:3000\nserviceName: svc\n"
+# case: (how the file is placed, its content, the message it fails with)
+BROKEN = {
+    "missing": ("none", None, "Config file not found: {path}"),
+    "a directory": ("dir", None, "Cannot read config file {path}: Is a directory"),
+    "not UTF-8": ("bytes", b"sanshainUrl: \xff\n", "Cannot read config file {path}: 'utf-8' codec can't decode"),
+    "invalid YAML": ("text", "sanshainUrl: [unclosed\n", "Failed to parse YAML: "),
+    "no mapping": ("text", "- sanshainUrl\n", "{path} must be a mapping of settings"),
+    "1.x field": ("text", _BASE + "releaseBranches: [main]\n", "sanshain.yaml: 'releaseBranches' is no longer"),
+    "invalid entry": ("text", _BASE + REQUIRE_WITHOUT_VERSION, "requires[0] (users): missing 'version'"),
+    "unsupported apiType": (
+        "text",
+        _BASE + "provides:\n  - file: openapi.yaml\n    apiType: raml\n",
+        "provides[0]: unsupported apiType 'raml'",
+    ),
+}
 
 
 class BestEffortTestCase(unittest.TestCase):
@@ -42,6 +60,22 @@ class BestEffortTestCase(unittest.TestCase):
                 f.write(data)
             else:
                 yaml.dump(data, f)
+
+    def place(self, case):
+        """Put the sanshain.yaml of a BROKEN case in place; the message it fails with."""
+        if os.path.isdir(self.config_file):
+            os.rmdir(self.config_file)
+        elif os.path.exists(self.config_file):
+            os.remove(self.config_file)
+        kind, content, message = BROKEN[case]
+        if kind == "dir":
+            os.mkdir(self.config_file)
+        elif kind == "bytes":
+            with open(self.config_file, "wb") as f:
+                f.write(content)
+        elif kind == "text":
+            self.write(content)
+        return message.format(path=self.config_file)
 
     def failing_client(self):
         client = mock.Mock()
@@ -96,28 +130,72 @@ class TestCli(BestEffortTestCase):
         with open(os.path.join(self.folder, "gen", "users.yaml"), "rb") as f:
             self.assertEqual(f.read(), b"paths: {}")
 
-    def test_a_broken_config_fails_also_with_best_effort(self):
-        base = "sanshainUrl: http://localhost:3000\nserviceName: svc\n"
+    def test_a_missing_or_broken_config_fails_without_best_effort(self):
+        for case in BROKEN:
+            for command in ("provide", "require", "catalog"):
+                with self.subTest(case=case, command=command):
+                    message = self.place(case)
+                    code, out, client_cls = self.run_cli(command)
+                    self.assertEqual(code, 1)
+                    self.assertIn(f"Error: {message}", out)
+                    self.assertNotIn("Continuing (best effort)", out)
+                    client_cls.assert_not_called()
+
+    def test_best_effort_from_the_flag_or_the_variable_turns_a_missing_or_broken_config_into_a_warning(self):
+        switches = {
+            "flag": (("--best-effort",), {}),
+            "variable true": ((), {"SANSHAIN_BEST_EFFORT": "true"}),
+            "variable 1": ((), {"SANSHAIN_BEST_EFFORT": "1"}),
+        }
+        for case in BROKEN:
+            for command in ("provide", "require", "catalog"):
+                for switch, (flags, env) in switches.items():
+                    with self.subTest(case=case, command=command, switch=switch):
+                        message = self.place(case)
+                        code, out, client_cls = self.run_cli(*flags, command, env=env)
+                        self.assertEqual(code, 0)
+                        self.assertTrue(out.startswith(f"Error: {message}"), out)
+                        self.assertTrue(out.endswith("\nContinuing (best effort)\n"), out)
+                        client_cls.assert_not_called()
+
+    def test_the_broken_files_own_best_effort_does_not_count(self):
+        base = "sanshainUrl: http://localhost:3000\nserviceName: svc\nbestEffort: true\n"
         cases = {
-            "unreadable": None,
-            "invalid": base + "requires:\n  - serviceName: users\n    outputDirectory: gen\n    endpoints: []\n",
             "1.x field": base + "releaseBranches: [main]\n",
+            "invalid entry": base + REQUIRE_WITHOUT_VERSION,
             "unsupported apiType": base + "provides:\n  - file: openapi.yaml\n    apiType: raml\n",
-            "bestEffort in the file": base + "bestEffort: true\nprovides:\n  - file: openapi.yaml\n    apiType: raml\n",
         }
         for name, text in cases.items():
             for command in ("provide", "require", "catalog"):
                 with self.subTest(case=name, command=command):
-                    if text is None:
-                        if os.path.exists(self.config_file):
-                            os.remove(self.config_file)
-                    else:
-                        self.write(text)
-                    code, out, client_cls = self.run_cli("--best-effort", command, env={"SANSHAIN_BEST_EFFORT": "true"})
+                    self.write(text)
+                    code, out, client_cls = self.run_cli(command, env={"SANSHAIN_BEST_EFFORT": "false"})
                     self.assertEqual(code, 1)
                     self.assertIn("Error: ", out)
                     self.assertNotIn("Continuing (best effort)", out)
                     client_cls.assert_not_called()
+
+    def test_the_broken_files_own_strict_does_not_count(self):
+        base = "sanshainUrl: http://localhost:3000\nserviceName: svc\nstrict: true\n"
+        for text in (base + "releaseBranches: [main]\n", base + REQUIRE_WITHOUT_VERSION):
+            with self.subTest(text=text):
+                self.write(text)
+                code, out, client_cls = self.run_cli("--best-effort", "require")
+                self.assertEqual(code, 0)
+                self.assertIn("Continuing (best effort)", out)
+                client_cls.assert_not_called()
+
+    def test_the_best_effort_help_names_a_missing_or_broken_config(self):
+        out = io.StringIO()
+        with mock.patch("sys.argv", ["sanshainconan", "--help"]), contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                main()
+        help_text = " ".join(out.getvalue().split())
+        self.assertIn(
+            "--best-effort turn failed calls, and a missing or broken sanshain.yaml, into warnings and exit 0 "
+            "(also SANSHAIN_BEST_EFFORT=true or 1; bestEffort: true in sanshain.yaml counts for failed calls only)",
+            help_text,
+        )
 
     def test_missing_configuration_under_strict_fails_also_with_best_effort(self):
         cases = [
@@ -168,6 +246,21 @@ class TestHelper(BestEffortTestCase):
             sanshain.provide()
         path = os.path.join(self.folder, "openapi.yaml")
         sanshain.conanfile.output.error.assert_called_once_with(f"Sanshain: File not found: {path}")
+
+    def test_a_missing_or_broken_config_raises_also_with_best_effort(self):
+        # The helper has no flag and does not read SANSHAIN_BEST_EFFORT; a
+        # broken file's own bestEffort does not count.
+        conanfile = SimpleNamespace(export_sources_folder=self.folder, recipe_folder=self.folder, output=mock.Mock())
+        for case in BROKEN:
+            with self.subTest(case=case):
+                message = self.place(case)
+                if BROKEN[case][0] == "text" and not BROKEN[case][1].startswith("-"):
+                    with open(self.config_file, "a") as f:
+                        f.write("bestEffort: true\n")
+                with mock.patch.dict(os.environ, {"SANSHAIN_BEST_EFFORT": "true"}, clear=True):
+                    with self.assertRaises(ConfigError) as ctx:
+                        Sanshain(conanfile)
+                self.assertTrue(str(ctx.exception).startswith(message), str(ctx.exception))
 
     def test_an_unsupported_provide_api_type_raises_also_with_best_effort(self):
         with self.assertRaises(ConfigError) as ctx:

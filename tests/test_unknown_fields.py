@@ -191,22 +191,34 @@ class TestCliCat(CliTestCase):
                 self.assertIn(f"Error: {error}", out)
                 client_cls.return_value.require.assert_not_called()
 
-    def test_best_effort_shows_the_cat_then_fails_on_the_broken_config(self):
+    def test_best_effort_shows_the_cat_then_warns_about_the_broken_config(self):
         self.write(BASE + "provide:\n  fiel: a.yaml\n")
-        code, out, err, _ = self.run_cli("--best-effort")
-        self.assertEqual(code, 1)
+        code, out, err, client_cls = self.run_cli("--best-effort")
+        self.assertEqual(code, 0)
         self.assertEqual(err, cat("sanshain.yaml: unknown field 'provide.fiel' - ignored"))
         self.assertIn("Error: At least one of file", out)
-        self.assertNotIn("Continuing (best effort)", out)
+        self.assertIn("Continuing (best effort)", out)
+        client_cls.assert_not_called()
 
     def test_strict_fails_on_the_unknown_field_before_other_validation(self):
         self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))
-        for extra in ((), ("--best-effort",)):
-            with self.subTest(extra=extra):
-                code, out, err, _ = self.run_cli(*extra)
-                self.assertEqual(code, 1)
-                self.assertEqual(err, cat("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)"))
-                self.assertNotIn("missing 'version'", out)
+        code, out, err, _ = self.run_cli()
+        self.assertEqual(code, 1)
+        self.assertEqual(err, cat("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)"))
+        self.assertNotIn("missing 'version'", out)
+
+    def test_best_effort_ignores_the_strict_of_a_file_that_does_not_validate(self):
+        # The file is broken, so its own strict does not count: the cat says
+        # ignored, the validation error is the warning, and nothing is called.
+        self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))
+        for extra, env in ((("--best-effort",), {}), ((), {"SANSHAIN_BEST_EFFORT": "true"})):
+            with self.subTest(extra=extra, env=env):
+                code, out, err, client_cls = self.run_cli(*extra, env=env)
+                self.assertEqual(code, 0)
+                self.assertEqual(err, cat("sanshain.yaml: unknown field 'requires[0].verison' - ignored"))
+                self.assertIn("Error: requires[0] (a): missing 'version'", out)
+                self.assertIn("Continuing (best effort)", out)
+                client_cls.assert_not_called()
 
     def test_known_but_unsupported_field_gives_no_cat(self):
         self.write(BASE + "insecure: true\nforce: true\ncombine: true\n" + REQUIRES)

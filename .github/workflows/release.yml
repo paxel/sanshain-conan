@@ -30,8 +30,12 @@ jobs:
           ver=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
           tag=${GITHUB_REF_NAME#v}
           [ "$ver" = "$tag" ] || { echo "tag v$tag != package version $ver" >&2; exit 1; }
+      # The locked versions as wheels only, without installing the project: the
+      # tests import it from the checkout. Building the package is the next step.
+      - name: Install dependencies
+        run: uv sync --locked --no-build --no-install-project --all-extras --dev
       - name: Tests
-        run: uv run --with pytest --with requests --with pyyaml --no-project python -m pytest tests/ -q
+        run: uv run --locked --no-build --no-sync python -m unittest discover tests
       - name: Build sdist and wheel
         run: uv build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

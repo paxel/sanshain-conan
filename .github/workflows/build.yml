@@ -16,25 +16,28 @@ jobs:
       with:
         python-version: '3.11'
         enable-cache: true
+    # Only the locked versions, only wheels: no build script of a dependency
+    # runs, and the project itself is not installed (the tests import it from
+    # the checkout). Every uv run below uses that environment as it is.
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev
+        uv sync --locked --no-build --no-install-project --all-extras --dev
     - name: Lint with flake8
       run: |
-        uv run flake8 .
+        uv run --locked --no-build --no-sync flake8 .
     - name: Check formatting with black
       run: |
-        uv run black --check .
+        uv run --locked --no-build --no-sync black --check .
     - name: Security check with bandit
       run: |
-        uv run bandit -r . --exclude .venv,venv
+        uv run --locked --no-build --no-sync bandit -r . --exclude .venv,venv
     - name: Type check with mypy
       run: |
-        uv run mypy . --exclude ".venv|venv"
+        uv run --locked --no-build --no-sync mypy . --exclude ".venv|venv"
     - name: Run tests
       run: |
         export PYTHONPATH=$PYTHONPATH:.
-        uv run python -m unittest discover tests
+        uv run --locked --no-build --no-sync python -m unittest discover tests
     # The python_requires recipe (and its `conan export` smoke test) is gone —
     # the package ships on PyPI; building the wheel is the packaging check.
     - name: Build sdist and wheel

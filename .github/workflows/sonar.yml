@@ -29,11 +29,13 @@ jobs:
         with:
           python-version: '3.11'
           enable-cache: true
-      - run: uv sync --all-extras --dev
+      # The locked versions (coverage is a dev dependency) as wheels only,
+      # without installing the project: the tests import it from the checkout.
+      - run: uv sync --locked --no-build --no-install-project --all-extras --dev
       - name: Tests with coverage
         run: |
-          uv run --with coverage coverage run --source=sanshainconan -m unittest discover tests
-          uv run --with coverage coverage xml -o coverage.xml
+          uv run --locked --no-build --no-sync coverage run --source=sanshainconan -m unittest discover tests
+          uv run --locked --no-build --no-sync coverage xml -o coverage.xml
       - uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
         env:
           SONAR_TOKEN: ${{ secrets.SQ_TOKEN }}

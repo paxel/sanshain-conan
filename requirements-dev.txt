@@ -4,3 +4,4 @@ bandit
 mypy
 types-requests
 types-PyYAML
+coverage

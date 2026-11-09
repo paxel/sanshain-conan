@@ -42,3 +42,18 @@ jobs:
     # the package ships on PyPI; building the wheel is the packaging check.
     - name: Build sdist and wheel
       run: uv build
+
+  # The same scan as the weekly Security workflow, with the same job name, so a
+  # pull request that brings in a vulnerable dependency is stopped before the
+  # merge.
+  osv-scanner:
+    name: Vulnerable dependencies (OSV-Scanner)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: osv-scanner
+      uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+      with:
+        scan-args: |-
+          --recursive
+          ./

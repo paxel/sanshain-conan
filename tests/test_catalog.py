@@ -214,7 +214,7 @@ class TestHelperCatalog(CatalogProject):
         conanfile = SimpleNamespace(
             export_sources_folder=self.work_dir,
             recipe_folder=self.work_dir,
-            base_folder=self.work_dir,
+            source_folder=self.work_dir,
             output=mock.Mock(),
         )
         with mock.patch.dict(os.environ, env or {}, clear=True):

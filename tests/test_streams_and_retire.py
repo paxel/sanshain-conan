@@ -149,9 +149,8 @@ class TestRetire(unittest.TestCase):
     def test_forbidden_names_the_role_and_the_maintainer_grant(self, mock_post, mock_get):
         # The lazy wrong-server check answers 2.x, keeping the original error.
         mock_get.return_value = make_response(200, {"version": "2.2.0"})
-        mock_post.return_value = make_response(
-            403, {"error": "requires the 'releaser' role"}, text='{"error":"requires the releaser role"}'
-        )
+        refusal = "retiring an API family of 'svc' requires the 'releaser' role or a maintainer grant"
+        mock_post.return_value = make_response(403, {"error": refusal}, text=f'{{"error":"{refusal}"}}')
         client = SanshainClient("http://localhost:8080")
 
         with self.assertRaises(SanshainError) as ctx:
@@ -160,6 +159,25 @@ class TestRetire(unittest.TestCase):
         self.assertIn("releaser", message)
         self.assertIn("maintainer", message)
         self.assertIn("snapshot", message)
+        self.assertIn("autoGa off (or setting SANSHAIN_GA=false)", message)
+
+    @mock.patch("requests.get")
+    @mock.patch("requests.post")
+    def test_any_other_forbidden_shows_the_service_message_alone(self, mock_post, mock_get):
+        mock_get.return_value = make_response(200, {"version": "2.13.0"})
+        refusal = (
+            "this API token has scope 'read_only' and may not change the catalog; "
+            "create a token with scope 'full' for provide, require and catalog pushes"
+        )
+        body = f'{{"error":"{refusal}"}}'
+        mock_post.return_value = make_response(403, {"error": refusal}, text=body)
+        client = SanshainClient("http://localhost:8080")
+
+        for call in (lambda: client.retire("svc"), lambda: client.provide("svc", "openapi: 3.0.3\n", "snapshot")):
+            with self.subTest(call=call):
+                with self.assertRaises(SanshainError) as ctx:
+                    call()
+                self.assertEqual(str(ctx.exception), f"Refused (403): {body}")
 
 
 class TestLineEndings(unittest.TestCase):

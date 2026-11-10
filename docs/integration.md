@@ -46,7 +46,7 @@ An unknown field in `sanshain.yaml` (usually a typo) is reported as a warning; w
 Relative paths in `sanshain.yaml` (the spec `file`s, `outputDirectory`) resolve against the folder `sanshain.yaml` was loaded from; absolute paths stay absolute.
 
 ### `sanshain.provide()`
-Reads the `provide` section from `sanshain.yaml` and uploads the specification to the Sanshain service. The version is read from the spec file itself (`info.version`, or the `// sanshain-version:` comment for proto); the stability is `snapshot` unless `SANSHAIN_GA=true` is set.
+Reads the `provide` section from `sanshain.yaml` and uploads the specification to the Sanshain service. The version is read from the spec file itself (`info.version`, or the `// sanshain-version:` comment for proto); the stability is `snapshot` unless `SANSHAIN_GA=true` is set, or `autoGa: true` in `sanshain.yaml` meets a build that sets `SANSHAIN_TRUNK=true` or `SANSHAIN_TAG` (see below).
 
 ### `sanshain.require()`
 Reads the `requires` section from `sanshain.yaml` and downloads the specifications at each entry's pinned `version` to the specified output directories.
@@ -55,6 +55,9 @@ An `apiType: asyncapi` entry with `format: openapi` downloads the channels as an
 
 ### `sanshain.catalog()`
 Pushes the file named by `catalogInfo` in `sanshain.yaml` (the project's Backstage `catalog-info.yaml`, relative to `sanshain.yaml`) to Sanshain with `PUT /catalog/<serviceName>`. **Needs Sanshain Service 2.4.0 or later**; all other methods work with any 2.x service. Without `catalogInfo` it warns and skips (with `strict: true` it raises). A failed push raises, or only warns with `bestEffort: true`. A file Sanshain cannot read as this project's Component (usually a `metadata.name` that is not the `serviceName`) is recorded nowhere and only warns; with `strict: true` it raises. `SANSHAIN_TRUNK=true` updates the main graph as well as the dev graph.
+
+### Annotations
+The `annotations` of `sanshain.yaml` (see the README) travel with `provide()` (every entry), `require()` and `catalog()` (the `scope: system` ones only); a retire sends none. **They need Sanshain Service 2.13.0 or later**; an older service gets the calls without them, with one warning. A `{{NAME}}` placeholder is filled from the environment variable `SANSHAIN_SET_NAME` only (exact case, non-empty), since a `conan install` carries no flags. An entry with an unfilled placeholder is left out with a warning (`annotation 'requirements' left out: {{ID}} is not set (SANSHAIN_SET_ID)`); with `strict: true` the helper raises `StrictError` when it is created.
 
 ### Sanshain warnings
 The graph never fails a build. Every `Sanshain-Warning` response header (for example an unknown `SANSHAIN_TAG`) is logged with `output.warning`; with `strict: true` the call then raises `StrictError` (`strict: Sanshain warned: <text>`), regardless of `bestEffort`. `SANSHAIN_TRUNK` and `SANSHAIN_TAG` together warn and declare neither stream; under strict the helper raises when it is created.
@@ -77,6 +80,8 @@ Every provide is a `snapshot` by default. Release pipelines mark their provides 
 - CLI flag: `--ga`
 
 Set it only on protected-branch (release) pipelines. There is no git or branch detection — the switch is the whole mechanism.
+
+With `autoGa: true` in `sanshain.yaml` a provide is GA whenever the build declares a stream (`SANSHAIN_TRUNK=true` or `SANSHAIN_TAG`, also both). The first of these that is set decides: the `--ga` flag (CLI only), `SANSHAIN_GA` (an explicit `false` keeps a snapshot; empty or absent is unset), `autoGa` with a stream, else `snapshot`. CI declares trunk and tag on its protected pipelines only, which is what makes them GA; the CI token's user needs the `releaser` role, and a trunk build that changes the spec without a version bump fails with `409 immutable_ga` and the proposed version. A retire never carries a stability.
 
 ## Typical Workflow
 

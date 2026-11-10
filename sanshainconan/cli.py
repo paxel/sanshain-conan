@@ -2,18 +2,20 @@ import argparse
 import os
 import sys
 
+from .annotations import fill_annotations, parse_set
 from .cache import SanshainCache
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, VersionConflictError, resolve_origin, resolve_stream
+from .client import (
+    SanshainClient,
+    SanshainError,
+    StrictError,
+    VersionConflictError,
+    resolve_origin,
+    resolve_stability,
+    resolve_stream,
+    stream_declared,
+)
 from .config import ConfigError, env_flag, load_config, puzzled_cat
-
-
-def resolve_stability(ga_flag=False):
-    """Every provide is a snapshot unless the ga switch is set explicitly:
-    the --ga flag or the environment variable SANSHAIN_GA=true (or 1)."""
-    if ga_flag or env_flag("SANSHAIN_GA"):
-        return "ga"
-    return "snapshot"
 
 
 def format_version_conflict(error, spec_file, api_type):
@@ -27,15 +29,47 @@ def format_version_conflict(error, spec_file, api_type):
     )
 
 
+def etag_for(cache, key, output_file):
+    """The ETag to send as If-None-Match: none when the output file is gone,
+    so the answer is a 200 that writes it again instead of a 304 that leaves it
+    missing."""
+    entry = cache.get_require_entry(key) if os.path.exists(output_file) else None
+    return entry.get("etag") if entry else None
+
+
 def warn(text):
     print(f"⚠ {text}")
+
+
+def set_argument(arg):
+    """argparse type of `--set NAME=value`."""
+    try:
+        return parse_set(arg)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+
+def resolve_annotations(config, sets, strict):
+    """The annotations of sanshain.yaml with their placeholders filled from
+    --set and SANSHAIN_SET_*. Every entry left out is a warning; under strict
+    the first fails the command before any request, also with best effort."""
+    annotations, warnings = fill_annotations(config.annotations, dict(sets or []))
+    for text in warnings:
+        warn(text)
+    if strict and warnings:
+        raise StrictError(f"strict: {warnings[0]}")
+    return annotations
 
 
 def main():
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
-    parser.add_argument("--ga", action="store_true", help="Provide as ga (immutable release); default is snapshot")
+    parser.add_argument(
+        "--ga",
+        action="store_true",
+        help="Provide as ga (immutable release); default is snapshot, or ga on a trunk or tag build with autoGa",
+    )
     parser.add_argument(
         "--trunk",
         action="store_true",
@@ -46,7 +80,12 @@ def main():
         default=None,
         help="this build belongs to a sanshain-branch — release/hotfix pipelines (also SANSHAIN_TAG)",
     )
-    parser.add_argument("--best-effort", action="store_true", help="Continue on errors")
+    parser.add_argument(
+        "--best-effort",
+        action="store_true",
+        help="turn failed calls, and a missing or broken sanshain.yaml, into warnings and exit 0 "
+        "(also SANSHAIN_BEST_EFFORT=true or 1; bestEffort: true in sanshain.yaml counts for failed calls only)",
+    )
     parser.add_argument(
         "--build-url",
         default=None,
@@ -61,6 +100,13 @@ def main():
         "--tickets", default=None, help="ticket ids this build closes, comma-separated (SANSHAIN_TICKETS)"
     )
     parser.add_argument("--note", default=None, help="one line of intent for this provide (also SANSHAIN_NOTE)")
+    parser.add_argument(
+        "--set",
+        action="append",
+        type=set_argument,
+        metavar="NAME=value",
+        help="fill the {{NAME}} placeholders of the annotations in sanshain.yaml; repeatable (also SANSHAIN_SET_NAME)",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -78,25 +124,26 @@ def main():
 
     try:
         config = None
+        # A missing or broken sanshain.yaml cannot be trusted to say bestEffort,
+        # so only the flag and SANSHAIN_BEST_EFFORT decide for it: best effort
+        # prints the error, calls nothing and exits 0. Strict is read from the
+        # file only, so it never applies here; unknown fields rejected by the
+        # strict of a file that otherwise loads always fail.
+        outside_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
         try:
-            config = load_config(args.config)
+            config = load_config(args.config, best_effort=outside_best_effort)
         except Exception as e:
             # The cat comes first, also when the config then fails.
             if isinstance(e, ConfigError) and e.unknown_fields:
                 for line in puzzled_cat(e.unknown_fields, e.strict):
                     print(line, file=sys.stderr)
-                # Unknown fields under strict: best-effort does not soften it.
                 if e.strict:
                     sys.exit(1)
-            resolved_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
-            if resolved_best_effort:
-                print(f"Warning loading config: {e}")
-                # Create a minimal config object
-                from .config import SanshainConfig
-
-                config = SanshainConfig({"sanshainUrl": "http://localhost:8080"})
-            else:
+            if not outside_best_effort:
                 raise
+            print(f"Error: {e}")
+            print("Continuing (best effort)")
+            return
 
         if config.unknown_fields:
             for line in puzzled_cat(config.unknown_fields, False):
@@ -112,11 +159,13 @@ def main():
         client = SanshainClient(config.sanshain_url, insecure=args.insecure, on_warning=warn, strict=strict)
         trunk, tag = resolve_stream(args.trunk, args.tag, strict=strict, warn=warn)
         origin = resolve_origin(args.build_url, args.change_url, args.tickets, args.note)
+        # Every entry is filled on every command; the client sends what each call may carry.
+        annotations = resolve_annotations(config, args.set, strict)
 
         if args.command == "catalog":
             config_dir = os.path.dirname(os.path.abspath(args.config))
             try:
-                run_catalog(config, client, config_dir, trunk, print, print)
+                run_catalog(config, client, config_dir, trunk, print, print, annotations=annotations)
             except ConfigError as e:
                 print(e)
                 sys.exit(1)
@@ -152,8 +201,23 @@ def main():
                 return
 
             config_dir = os.path.dirname(os.path.abspath(args.config))
-            stability = resolve_stability(args.ga)
+            # The stream is resolved above: autoGa makes a provide GA on a build that declares one.
+            stability = resolve_stability(args.ga, config.auto_ga, stream_declared(args.trunk, args.tag))
             provided = False
+
+            def each(step, *step_args):
+                # One provide or retire. Under best effort its failure is a
+                # warning and the next entry still runs, as require does per entry.
+                try:
+                    return step(*step_args)
+                except StrictError:
+                    raise
+                except Exception as e:
+                    if not config.best_effort:
+                        raise
+                    print(f"Error: {e}")
+                    print("Continuing (best effort)")
+                    return False
 
             def do_provide_file(file_path, api_type):
                 full_path = os.path.join(config_dir, file_path)
@@ -171,15 +235,33 @@ def main():
                 try:
                     if effective_type == "openapi":
                         response = client.provide(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     elif effective_type == "asyncapi":
                         response = client.provide_asyncapi(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     elif effective_type == "proto" or effective_type == "grpc":
                         response = client.provide_proto(
-                            config.service_name, content, stability, trunk=trunk, tag=tag, origin=origin
+                            config.service_name,
+                            content,
+                            stability,
+                            trunk=trunk,
+                            tag=tag,
+                            origin=origin,
+                            annotations=annotations,
                         )
                     else:
                         raise SanshainError(f"Unknown apiType: {effective_type}")
@@ -240,22 +322,22 @@ def main():
 
             for p in provides:
                 if p.get("retired"):
-                    if do_retire(p.get("apiType")):
+                    if each(do_retire, p.get("apiType")):
                         provided = True
                     continue
                 if "file" in p:
-                    if do_provide_file(p["file"], p.get("apiType")):
+                    if each(do_provide_file, p["file"], p.get("apiType")):
                         provided = True
 
                 # Backward compatibility
                 if "openApiFile" in p:
-                    if do_provide_file(p["openApiFile"], "openapi"):
+                    if each(do_provide_file, p["openApiFile"], "openapi"):
                         provided = True
                 if "asyncApiFile" in p:
-                    if do_provide_file(p["asyncApiFile"], "asyncapi"):
+                    if each(do_provide_file, p["asyncApiFile"], "asyncapi"):
                         provided = True
                 if "protoFile" in p:
-                    if do_provide_file(p["protoFile"], "proto"):
+                    if each(do_provide_file, p["protoFile"], "proto"):
                         provided = True
 
             if not provided:
@@ -301,11 +383,13 @@ def main():
                 )
                 os.makedirs(output_path, exist_ok=True)
 
+                ext = "proto" if api_type in ("proto", "grpc") else "yaml"
+                output_file = os.path.join(output_path, f"{service_name}.{ext}")
+
                 try:
                     if len(endpoints) > 1:
-                        cache_key = SanshainCache.require_bundle_key(service_name, version, fmt)
-                        cached_entry = cache.get_require_entry(cache_key)
-                        cached_etag = cached_entry.get("etag") if cached_entry else None
+                        cache_key = SanshainCache.require_bundle_key(service_name, version, fmt, output_dir)
+                        cached_etag = etag_for(cache, cache_key, output_file)
 
                         result = client.require_bundle(
                             config.service_name,
@@ -317,12 +401,14 @@ def main():
                             trunk=trunk,
                             tag=tag,
                             fmt=fmt,
+                            annotations=annotations,
                         )
                     else:
                         ep = endpoints[0]
-                        cache_key = SanshainCache.require_key(service_name, version, ep["method"], ep["path"], fmt)
-                        cached_entry = cache.get_require_entry(cache_key)
-                        cached_etag = cached_entry.get("etag") if cached_entry else None
+                        cache_key = SanshainCache.require_key(
+                            service_name, version, ep["method"], ep["path"], fmt, output_dir
+                        )
+                        cached_etag = etag_for(cache, cache_key, output_file)
 
                         result = client.require(
                             config.service_name,
@@ -335,14 +421,13 @@ def main():
                             trunk=trunk,
                             tag=tag,
                             fmt=fmt,
+                            annotations=annotations,
                         )
 
                     if result.get("not_modified"):
                         print(f"⏭ {service_name} spec unchanged (304), skipping code generation.")
                         continue
 
-                    ext = "proto" if api_type == "proto" else "yaml"
-                    output_file = os.path.join(output_path, f"{service_name}.{ext}")
                     # Binary: the server's bytes as they are, no newline translation.
                     with open(output_file, "wb") as f:
                         f.write(result["body"])

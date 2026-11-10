@@ -297,7 +297,7 @@ class TestCliWarnings(Project):
 class TestHelperWarnings(Project):
     def helper(self, env=None):
         conanfile = SimpleNamespace(
-            export_sources_folder=self.dir, recipe_folder=self.dir, base_folder=self.dir, output=mock.Mock()
+            export_sources_folder=self.dir, recipe_folder=self.dir, source_folder=self.dir, output=mock.Mock()
         )
         with mock.patch.dict(os.environ, env or {}, clear=True):
             return Sanshain(conanfile, config_path=self.config_file)

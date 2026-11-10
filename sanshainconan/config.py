@@ -39,7 +39,7 @@ _BASE_VERSION_HINT = (
 )
 _RELEASE_BRANCHES_HINT = (
     "'releaseBranches' is no longer supported — stability is decided by the ga switch "
-    "(SANSHAIN_GA=true or --ga) in Sanshain 2.0; remove it"
+    "(SANSHAIN_GA=true or --ga) in Sanshain 2.0, or by autoGa: true on a trunk or tag build; remove it"
 )
 
 
@@ -56,6 +56,8 @@ _KNOWN_TOP = {
     "insecure",
     "combine",
     "catalogInfo",
+    "autoGa",
+    "annotations",
     "provide",
     "provides",
     "requires",
@@ -63,6 +65,14 @@ _KNOWN_TOP = {
 _KNOWN_PROVIDE = {"file", "apiType", "retired", "openApiFile", "asyncApiFile", "protoFile", "combine"}
 _KNOWN_REQUIRE = {"serviceName", "apiType", "version", "outputDirectory", "endpoints", "format"}
 _KNOWN_ENDPOINT = {"method", "path"}
+_KNOWN_ANNOTATION = {"scope", "name", "value"}
+_ANNOTATION_SCOPES = ("version", "system")
+# The apiType spellings provides and requires take; grpc means proto.
+_API_TYPES = ("openapi", "asyncapi", "proto", "grpc")
+
+
+def _unsupported_api_type(api_type):
+    return f"unsupported apiType {api_type!r} — use openapi, asyncapi or proto (grpc means proto)"
 
 
 def find_unknown_fields(data):
@@ -93,6 +103,7 @@ def find_unknown_fields(data):
         "",
         {
             "provide": lambda entry, path: check(entry, _KNOWN_PROVIDE, f"{path}.", {}),
+            "annotations": each(_KNOWN_ANNOTATION),
             "provides": each(_KNOWN_PROVIDE),
             "requires": each(_KNOWN_REQUIRE, {"endpoints": each(_KNOWN_ENDPOINT)}),
         },
@@ -117,7 +128,11 @@ def puzzled_cat(fields, strict):
 
 
 class SanshainConfig:
-    def __init__(self, data):
+    def __init__(self, data, best_effort=False):
+        """`best_effort` is best effort from outside the file (--best-effort or
+        SANSHAIN_BEST_EFFORT): under it a file that does not validate is
+        broken and its own strict does not count, so its unknown fields are
+        only reported and the validation error is raised."""
         # SANSHAIN_URL beats the yaml's sanshainUrl: the service address is
         # an environment concern and moves without a commit.
         self.sanshain_url = env_url() or data.get("sanshainUrl")
@@ -127,23 +142,32 @@ class SanshainConfig:
         self.best_effort = data.get("bestEffort", False)
         self.strict = data.get("strict", False)
         self.catalog_info = data.get("catalogInfo")
+        # A provide is GA whenever the build declares a stream (trunk or a
+        # tag), unless the ga flag or SANSHAIN_GA says otherwise.
+        self.auto_ga = False if data.get("autoGa") is None else data["autoGa"]
+        # As written: the {{NAME}} placeholders are filled per command (annotations.fill_annotations).
+        self.annotations = data.get("annotations")
 
         self.provide = data.get("provide")
         self.provides = data.get("provides", [])
         self.requires = data.get("requires", [])
 
         # Order: legacy-field rejections, then unknown fields (the cat; under
-        # strict they fail here), then the remaining validation — so a typo
-        # that replaces a required field is named before the error it causes.
+        # strict they fail here), then the remaining validation error — so a
+        # typo that replaces a required field is named before the error it causes.
         self._reject_legacy(data)
         self.unknown_fields = find_unknown_fields(data)
-        if self.unknown_fields and self.strict:
-            raise ConfigError(unknown_fields_message(self.unknown_fields, True), self.unknown_fields, strict=True)
         try:
             self._validate(data)
+            invalid = None
         except ConfigError as e:
-            e.unknown_fields = self.unknown_fields
-            raise
+            invalid = e
+        strict = self.strict and not (best_effort and invalid is not None)
+        if self.unknown_fields and strict:
+            raise ConfigError(unknown_fields_message(self.unknown_fields, True), self.unknown_fields, strict=True)
+        if invalid is not None:
+            invalid.unknown_fields = self.unknown_fields
+            raise invalid
 
     @staticmethod
     def _reject_legacy(data):
@@ -172,8 +196,13 @@ class SanshainConfig:
     def _validate(self, data):
         if not self.sanshain_url:
             raise ConfigError("Missing required field: sanshainUrl")
+        if not isinstance(self.auto_ga, bool):
+            raise ConfigError(f"autoGa must be true or false, not {self.auto_ga!r}")
+        self._validate_annotations()
 
         def validate_provide(p, context):
+            if "apiType" in p and p["apiType"] not in _API_TYPES:
+                raise ConfigError(f"{context}: {_unsupported_api_type(p['apiType'])}")
             # A retired entry names its family via apiType alone: the project
             # no longer provides it, so demanding a spec file would force a
             # dead file to stay on disk forever.
@@ -195,6 +224,8 @@ class SanshainConfig:
                 raise ConfigError("Missing required field in require entry: serviceName")
             name = req["serviceName"]
             context = f"requires[{i}] ({name})"
+            if "apiType" in req and req["apiType"] not in _API_TYPES:
+                raise ConfigError(f"{context}: {_unsupported_api_type(req['apiType'])}")
             if "version" not in req:
                 raise ConfigError(
                     f"{context}: missing 'version' — Sanshain 2.0 pins exact versions; "
@@ -211,16 +242,48 @@ class SanshainConfig:
                     "is not supported; the only combination is apiType: asyncapi with format: openapi"
                 )
 
+    def _validate_annotations(self):
+        """Every entry has the strings scope (version or system), name and
+        value; a violation names its entry. Wrong types are errors, never
+        converted. The size limits are the service's to check, and an extra
+        key is an unknown field, not an error."""
+        if self.annotations is None:
+            self.annotations = []
+            return
+        if not isinstance(self.annotations, list):
+            raise ConfigError("annotations must be a list of entries with scope, name and value")
+        for i, entry in enumerate(self.annotations):
+            if not isinstance(entry, dict):
+                raise ConfigError(f"annotations[{i}]: must be an entry with scope, name and value")
+            name = entry.get("name")
+            context = f"annotations[{i}] ({name})" if isinstance(name, str) else f"annotations[{i}]"
+            for field in ("scope", "name", "value"):
+                if entry.get(field) is None:
+                    raise ConfigError(f"{context}: missing '{field}'")
+                if not isinstance(entry[field], str):
+                    raise ConfigError(f"{context}: '{field}' must be a string, not {entry[field]!r}")
+            if entry["scope"] not in _ANNOTATION_SCOPES:
+                raise ConfigError(f"{context}: scope '{entry['scope']}' is not supported — use version or system")
 
-def load_config(path):
+
+def load_config(path, best_effort=False):
+    """Load and validate sanshain.yaml; every reason it cannot be used is a
+    ConfigError. `best_effort` is best effort from outside the file (see
+    SanshainConfig); the conanfile helper has none."""
     if not os.path.exists(path):
         raise ConfigError(f"Config file not found: {path}")
 
     try:
         with open(path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
             data = yaml.safe_load(f)
-            if data is None:
-                raise ConfigError(f"Config file is empty: {path}")
-            return SanshainConfig(data)
     except yaml.YAMLError as e:
         raise ConfigError(f"Failed to parse YAML: {e}")
+    except OSError as e:
+        raise ConfigError(f"Cannot read config file {path}: {e.strerror or e}")
+    except UnicodeDecodeError as e:
+        raise ConfigError(f"Cannot read config file {path}: {e}")
+    if data is None:
+        raise ConfigError(f"Config file is empty: {path}")
+    if not isinstance(data, dict):
+        raise ConfigError(f"{path} must be a mapping of settings, such as sanshainUrl: <url>")
+    return SanshainConfig(data, best_effort)

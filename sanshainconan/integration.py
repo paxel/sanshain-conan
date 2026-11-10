@@ -15,23 +15,35 @@ Conan remote that was never stood up:
 Stability and stream are read from the environment, because a `conan install`
 carries no plugin flags: `SANSHAIN_GA=true` publishes GA, `SANSHAIN_TRUNK=true`
 declares the trunk stream and `SANSHAIN_TAG=<branch>` a sanshain-branch. All
-three are pipeline concerns and never live in `sanshain.yaml`.
+three are pipeline concerns and never live in `sanshain.yaml`; only `autoGa:
+true` there may make a provide GA on a build that declares a stream, unless
+`SANSHAIN_GA` is set (`false` keeps a snapshot).
 """
 
 import os
 
+from .annotations import fill_annotations
 from .catalog import run_catalog
-from .client import SanshainClient, SanshainError, StrictError, resolve_origin, resolve_stream
-from .config import ConfigError, env_flag, load_config, puzzled_cat
+from .client import (
+    SanshainClient,
+    SanshainError,
+    StrictError,
+    resolve_origin,
+    resolve_stability,
+    resolve_stream,
+    stream_declared,
+)
+from .config import ConfigError, load_config, puzzled_cat
 
 
 class Sanshain:
     def __init__(self, conanfile, config_path=None):
         self.conanfile = conanfile
         # Without an explicit config_path, sanshain.yaml is expected in the
-        # project root; base_folder is usually the project root in Conan 2.
+        # project root: the export-sources folder, else the recipe folder, else
+        # the source folder. Conan 2's ConanFile has no base_folder.
         if not config_path:
-            root = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.base_folder
+            root = conanfile.export_sources_folder or conanfile.recipe_folder or conanfile.source_folder
             config_path = os.path.join(root, "sanshain.yaml")
 
         # Every relative path in sanshain.yaml (file, outputDirectory, ...)
@@ -52,10 +64,6 @@ class Sanshain:
                 conanfile.output.warning(line)
         # Every Sanshain-Warning header is a warning; under strict it fails the call.
         self.client = SanshainClient(self.config.sanshain_url, on_warning=self._warn, strict=self.config.strict)
-        # Every provide is a snapshot unless the ga switch is set
-        # (SANSHAIN_GA=true). CI sets it on release pipelines; that is the
-        # whole mechanism.
-        self.stability = "ga" if env_flag("SANSHAIN_GA") else "snapshot"
         # Why this build provides: build and change URL from the runner,
         # tickets and note from SANSHAIN_TICKETS / SANSHAIN_NOTE.
         self.origin = resolve_origin()
@@ -64,6 +72,19 @@ class Sanshain:
         except StrictError as e:
             conanfile.output.error(f"Sanshain: {e}")
             raise
+        # After the stream: SANSHAIN_GA decides when set, else autoGa makes a
+        # provide GA on a build that declares trunk or a tag; else snapshot.
+        self.stability = resolve_stability(auto_ga=self.config.auto_ga, declared=stream_declared())
+        # The annotations' {{NAME}} placeholders come from SANSHAIN_SET_NAME
+        # alone (a `conan install` carries no flags). Every entry left out is
+        # a warning; under strict the first raises here, before any request.
+        self.annotations, left_out = fill_annotations(self.config.annotations, flag_hint=False)
+        for text in left_out:
+            self._warn(text)
+        if self.config.strict and left_out:
+            error = StrictError(f"strict: {left_out[0]}")
+            conanfile.output.error(f"Sanshain: {error}")
+            raise error
 
     def _warn(self, text):
         self.conanfile.output.warning(f"Sanshain: {text}")
@@ -95,9 +116,10 @@ class Sanshain:
         def do_provide(file_path, api_type):
             full_path = os.path.join(self.base_path, file_path)
             if not os.path.exists(full_path):
-                self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 if not self.config.best_effort:
+                    # Logged once, by each(), before it propagates.
                     raise Exception(f"File not found: {full_path}")
+                self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 return False
 
             with open(full_path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
@@ -117,6 +139,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             elif effective_type == "asyncapi":
                 response = self._call(
@@ -127,6 +150,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             elif effective_type == "proto" or effective_type == "grpc":
                 response = self._call(
@@ -137,6 +161,7 @@ class Sanshain:
                     trunk=self.trunk,
                     tag=self.tag,
                     origin=self.origin,
+                    annotations=self.annotations,
                 )
             else:
                 return False
@@ -154,24 +179,39 @@ class Sanshain:
             )
             return True
 
+        def each(step, *step_args):
+            # One provide or retire. Under bestEffort its failure is a warning
+            # and the next entry still runs, as require() does per entry.
+            try:
+                return step(*step_args)
+            except StrictError:
+                raise
+            except Exception as e:
+                if not self.config.best_effort:
+                    self.conanfile.output.error(f"Sanshain: {e}")
+                    raise
+                self.conanfile.output.warning(f"Sanshain: {e}")
+                self.conanfile.output.warning("Sanshain: Continuing (best effort)")
+                return False
+
         for p in provides:
             if p.get("retired"):
-                if do_retire(p.get("apiType")):
+                if each(do_retire, p.get("apiType")):
                     provided = True
                 continue
             if "file" in p:
-                if do_provide(p["file"], p.get("apiType")):
+                if each(do_provide, p["file"], p.get("apiType")):
                     provided = True
 
             # Backward compatibility
             if "openApiFile" in p:
-                if do_provide(p["openApiFile"], "openapi"):
+                if each(do_provide, p["openApiFile"], "openapi"):
                     provided = True
             if "asyncApiFile" in p:
-                if do_provide(p["asyncApiFile"], "asyncapi"):
+                if each(do_provide, p["asyncApiFile"], "asyncapi"):
                     provided = True
             if "protoFile" in p:
-                if do_provide(p["protoFile"], "proto"):
+                if each(do_provide, p["protoFile"], "proto"):
                     provided = True
 
         if provided:
@@ -186,7 +226,16 @@ class Sanshain:
         """
         output = self.conanfile.output
         try:
-            self._call(run_catalog, self.config, self.client, self.base_path, self.trunk, output.info, output.warning)
+            self._call(
+                run_catalog,
+                self.config,
+                self.client,
+                self.base_path,
+                self.trunk,
+                output.info,
+                output.warning,
+                annotations=self.annotations,
+            )
         except SanshainError as e:
             if not self.config.best_effort:
                 output.error(f"Sanshain: {e}")
@@ -243,6 +292,7 @@ class Sanshain:
                         trunk=self.trunk,
                         tag=self.tag,
                         fmt=fmt,
+                        annotations=self.annotations,
                     )
                 else:
                     ep = endpoints[0]
@@ -257,9 +307,10 @@ class Sanshain:
                         trunk=self.trunk,
                         tag=self.tag,
                         fmt=fmt,
+                        annotations=self.annotations,
                     )
 
-                ext = "proto" if api_type == "proto" else "yaml"
+                ext = "proto" if api_type in ("proto", "grpc") else "yaml"
                 output_file = os.path.join(base_output, f"{service_name}.{ext}")
                 # Binary: the server's bytes as they are, no newline translation.
                 with open(output_file, "wb") as f:
@@ -271,4 +322,4 @@ class Sanshain:
                 self.conanfile.output.error(f"Sanshain: Error requiring {service_name}: {e}")
                 if not self.config.best_effort:
                     raise
-                self.conanfile.output.warn("Sanshain: Continuing (best effort)")
+                self.conanfile.output.warning("Sanshain: Continuing (best effort)")

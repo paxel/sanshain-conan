@@ -1,6 +1,6 @@
 [project]
 name = "sanshain-conan"
-version = "2.4.0"
+version = "2.5.0"
 description = "Conan extension for Sanshain OpenAPI service"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,7 @@ dev = [
     "mypy",
     "types-requests",
     "types-PyYAML",
+    "coverage",
 ]
 
 [tool.black]

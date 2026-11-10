@@ -54,6 +54,18 @@ class TestSanshainConfig(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "Config file not found"):
             load_config("nonexistent.yaml")
 
+    def test_a_file_without_a_mapping_of_settings_is_a_config_error_naming_it(self):
+        config_file = os.path.join(self.test_dir, "sanshain.yaml")
+        for text in ("just a string\n", "- sanshainUrl: http://localhost:8080\n", "42\n"):
+            with self.subTest(text=text):
+                with open(config_file, "w") as f:
+                    f.write(text)
+                with self.assertRaises(ConfigError) as ctx:
+                    load_config(config_file)
+                self.assertEqual(
+                    str(ctx.exception), f"{config_file} must be a mapping of settings, such as sanshainUrl: <url>"
+                )
+
     def test_require_missing_version_names_entry_and_hints_migration(self):
         data = self._valid_data()
         del data["requires"][0]["version"]
@@ -66,6 +78,27 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("requires[0] (other-service): missing 'version'", msg)
         self.assertIn("Sanshain 2.0 pins exact versions", msg)
         self.assertIn("GET /producers/other-service/versions", msg)
+
+    def test_unknown_require_api_type_is_a_config_error(self):
+        data = self._valid_data()
+        data["requires"][0]["apiType"] = "graphql"
+        config_file = self._write(data)
+
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(config_file)
+
+        self.assertEqual(
+            str(ctx.exception),
+            "requires[0] (other-service): unsupported apiType 'graphql' — use openapi, asyncapi or proto "
+            "(grpc means proto)",
+        )
+
+    def test_every_provide_api_type_spelling_is_taken_on_a_require(self):
+        for api_type in ("openapi", "asyncapi", "proto", "grpc"):
+            with self.subTest(api_type=api_type):
+                data = self._valid_data()
+                data["requires"][0]["apiType"] = api_type
+                self.assertEqual(load_config(self._write(data)).requires[0]["apiType"], api_type)
 
     def test_require_branch_is_rejected_by_name(self):
         data = self._valid_data()

@@ -26,7 +26,7 @@ def fake_conanfile(folder):
     return SimpleNamespace(
         export_sources_folder=folder,
         recipe_folder=folder,
-        base_folder=folder,
+        source_folder=folder,
         output=mock.Mock(),
     )
 
@@ -151,6 +151,16 @@ class TestHelperPaths(PathsTestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             sanshain = Sanshain(fake_conanfile(self.config_dir))
         self.assertEqual(sanshain.base_path, os.path.abspath(self.config_dir))
+
+    def test_without_export_sources_and_recipe_folder_the_source_folder_is_the_root(self):
+        # The attributes of a Conan 2 ConanFile: there is no base_folder.
+        conanfile = SimpleNamespace(
+            export_sources_folder=None, recipe_folder=None, source_folder=self.config_dir, output=mock.Mock()
+        )
+        with mock.patch.dict(os.environ, {}, clear=True):
+            sanshain = Sanshain(conanfile)
+        self.assertEqual(sanshain.base_path, os.path.abspath(self.config_dir))
+        self.assertEqual(sanshain.config.service_name, "my-service")
 
 
 if __name__ == "__main__":

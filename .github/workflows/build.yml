@@ -10,32 +10,50 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install uv and Python
-      uses: astral-sh/setup-uv@v10.3.2
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       with:
         python-version: '3.11'
         enable-cache: true
+    # Only the locked versions, only wheels: no build script of a dependency
+    # runs, and the project itself is not installed (the tests import it from
+    # the checkout). Every uv run below uses that environment as it is.
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev
+        uv sync --locked --no-build --no-install-project --all-extras --dev
     - name: Lint with flake8
       run: |
-        uv run flake8 .
+        uv run --locked --no-build --no-sync flake8 .
     - name: Check formatting with black
       run: |
-        uv run black --check .
+        uv run --locked --no-build --no-sync black --check .
     - name: Security check with bandit
       run: |
-        uv run bandit -r . --exclude .venv,venv
+        uv run --locked --no-build --no-sync bandit -r . --exclude .venv,venv
     - name: Type check with mypy
       run: |
-        uv run mypy . --exclude ".venv|venv"
+        uv run --locked --no-build --no-sync mypy . --exclude ".venv|venv"
     - name: Run tests
       run: |
         export PYTHONPATH=$PYTHONPATH:.
-        uv run python -m unittest discover tests
+        uv run --locked --no-build --no-sync python -m unittest discover tests
     # The python_requires recipe (and its `conan export` smoke test) is gone —
     # the package ships on PyPI; building the wheel is the packaging check.
     - name: Build sdist and wheel
       run: uv build
+
+  # The same scan as the weekly Security workflow, with the same job name, so a
+  # pull request that brings in a vulnerable dependency is stopped before the
+  # merge.
+  osv-scanner:
+    name: Vulnerable dependencies (OSV-Scanner)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: osv-scanner
+      uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+      with:
+        scan-args: |-
+          --recursive
+          ./

@@ -12,6 +12,10 @@ on:
     tags:
       - 'v*'
 
+# Read-only by default; only the release and publish jobs get more.
+permissions:
+  contents: read
+
 jobs:
   gate:
     runs-on: ubuntu-latest

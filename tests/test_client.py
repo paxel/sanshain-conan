@@ -245,6 +245,32 @@ class TestWrongServerDiagnosis(unittest.TestCase):
 
         self.assertIn("500", str(ctx.exception))
 
+    @mock.patch("requests.put")
+    @mock.patch("requests.get")
+    @mock.patch("requests.post")
+    def test_an_answer_nested_deeper_than_python_follows_is_read_as_no_json(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock, mock_put: mock.MagicMock
+    ) -> None:
+        def nested(status_code: int) -> mock.Mock:
+            resp = make_response(status_code, text="[[[[")
+            resp.json.side_effect = RecursionError("maximum recursion depth exceeded")
+            return resp
+
+        client = SanshainClient("http://localhost:8080")
+        mock_get.return_value = nested(200)
+        self.assertIsNone(client.get_server_version())
+
+        mock_post.return_value = nested(500)
+        with self.assertRaises(SanshainError) as ctx:
+            client.provide("my-service", "openapi: 3.0.0", "snapshot")
+        self.assertEqual(str(ctx.exception), "Request failed with status 500: [[[[")
+
+        mock_post.return_value = nested(202)
+        self.assertIsNone(client.provide("my-service", "openapi: 3.0.0", "snapshot"))
+
+        mock_put.return_value = nested(200)
+        self.assertEqual(client.push_catalog("my-service", "kind: Component"), {})
+
 
 class TestGrpcRequire(unittest.TestCase):
     @mock.patch("requests.get")

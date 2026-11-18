@@ -69,7 +69,7 @@ a `provides` or `requires` that is no list, ended in a `TypeError` or an `Attrib
 Python; they are configuration errors now, and an empty `provides:` or `requires:` holds no
 entry. A value PyYAML cannot build, such as the date `2001-99-99`, and a file nested deeper
 than Python follows, are YAML errors now, in `sanshain.yaml` and in an answer that should be
-an OpenAPI document. A state file that is no text, or whose entry for a require is no ETag
+an OpenAPI document; a JSON answer nested that deeply is read as text. A state file that is no text, or whose entry for a require is no ETag
 record, made every later require of that endpoint fail; such a file or entry now counts as
 absent and the endpoint is fetched again.
 

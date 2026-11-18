@@ -91,6 +91,7 @@ SEEDS = [
     b"openapi: 3.0.3\npaths: {}\n",
     b"asyncapi: 2.6.0\nchannels: {}\n",
     b"2001-99-99",
+    b"[" * 200000,
     b"",
 ]
 

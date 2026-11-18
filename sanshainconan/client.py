@@ -284,7 +284,7 @@ class SanshainClient:
                 return None
             version: str | None = response.json().get("version")
             return version
-        except (requests.RequestException, ValueError, AttributeError):
+        except (requests.RequestException, ValueError, AttributeError, RecursionError):
             return None
 
     def _diagnose_wrong_server(self) -> str | None:
@@ -334,7 +334,8 @@ class SanshainClient:
         error_json = None
         try:
             error_json = response.json()
-        except ValueError:
+        except (ValueError, RecursionError):
+            # No JSON, or JSON nested deeper than Python follows: the body is shown as text.
             pass
 
         if status == 409 and isinstance(error_json, dict) and error_json.get("proposed_version"):
@@ -542,7 +543,7 @@ class SanshainClient:
             self._handle_response(response, producer_name)
             try:
                 return response.json()
-            except ValueError:
+            except (ValueError, RecursionError):
                 return None
 
         return self._warned_call(response, finish)
@@ -747,7 +748,7 @@ class SanshainClient:
             raise
         try:
             body = response.json()
-        except ValueError:
+        except (ValueError, RecursionError):
             body = None
         if not isinstance(body, dict):
             body = {}

@@ -1,14 +1,16 @@
 # Sanshain Conan Plugin
 
-[![Build and Test](https://github.com/paxel/sanshain-conan/actions/workflows/build.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/build.yml)
+[![CI](https://github.com/paxel/sanshain-conan/actions/workflows/ci.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/ci.yml)
 [![Security](https://github.com/paxel/sanshain-conan/actions/workflows/security.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/security.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=coverage)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
+[![CodeQL](https://github.com/paxel/sanshain-conan/actions/workflows/codeql.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/paxel/sanshain-conan/badge)](https://scorecard.dev/viewer/?uri=github.com/paxel/sanshain-conan)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=paxel_sanshain-conan&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=paxel_sanshain-conan)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpaxel%2Fsanshain-conan%2Fsummer%2F.github%2Fbadges%2Fcoverage-python.json)](coverage-floors.toml)
+[![Fuzz](https://github.com/paxel/sanshain-conan/actions/workflows/fuzz.yml/badge.svg?branch=summer)](https://github.com/paxel/sanshain-conan/actions/workflows/fuzz.yml)
+[![Release](https://img.shields.io/github/v/release/paxel/sanshain-conan)](https://github.com/paxel/sanshain-conan/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 [![PyPI](https://img.shields.io/pypi/v/sanshain-conan)](https://pypi.org/project/sanshain-conan/)
-[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https://raw.githubusercontent.com/paxel/sanshain-conan/summer/pyproject.toml)](https://github.com/paxel/sanshain-conan/blob/summer/pyproject.toml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/paxel/sanshain-conan/blob/summer/LICENSE)
 
 A Conan extension and command-line client for the [Sanshain Service](https://github.com/paxel/sanshain-service): a C or C++ project provides its API specifications (OpenAPI, AsyncAPI, gRPC/Proto) under the version declared in the spec file, and downloads the endpoint snippets it depends on, pinned to an exact version, during `conan install`.
 

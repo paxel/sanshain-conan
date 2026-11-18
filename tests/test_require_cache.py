@@ -98,6 +98,33 @@ class TestCliRequireCache(unittest.TestCase):
         self.assertIsNone(client.require.call_args.args[6])
         self.assertEqual(self.read("gen", "users.yaml"), b"paths: {}")
 
+    def test_a_state_entry_that_is_no_etag_record_is_fetched_again(self) -> None:
+        self.write("gen")
+        self.run_cli()
+        state_file = os.path.join(self.folder, ".sanshain-cache", "state.json")
+        key = "users|1.0.0|GET|/users|out=gen"
+        for entry in (7, "text", [1], None, {"etag": 7}, {"etag": None}, {}):
+            with self.subTest(entry=entry):
+                with open(state_file, "w") as f:
+                    json.dump({"requires": {key: entry}}, f)
+                client, out = self.run_cli()
+                self.assertIsNone(client.require.call_args.args[6])
+                self.assertIn("Saved to", out)
+                with open(state_file) as f:
+                    self.assertEqual(json.load(f)["requires"][key]["etag"], '"e1"')
+
+    def test_a_state_file_that_cannot_be_read_counts_as_empty(self) -> None:
+        self.write("gen")
+        self.run_cli()
+        state_file = os.path.join(self.folder, ".sanshain-cache", "state.json")
+        for content in (b"\xff\xfe", b"{", b'"text"', b'{"requires": 7}', b"", b"[" * 100000):
+            with self.subTest(content=content[:20]):
+                with open(state_file, "wb") as f:
+                    f.write(content)
+                client, out = self.run_cli()
+                self.assertIsNone(client.require.call_args.args[6])
+                self.assertIn("Saved to", out)
+
     def test_a_present_output_file_still_sends_the_stored_etag(self) -> None:
         self.write("gen")
         self.run_cli()

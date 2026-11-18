@@ -113,6 +113,23 @@ class TestFormatOnTheWire(unittest.TestCase):
         )
 
     @mock.patch("requests.get")
+    def test_an_answer_yaml_cannot_build_needs_service_2_4_too(self, mock_get: mock.MagicMock) -> None:
+        for text in ("2001-99-99", "[" * 5000):
+            with self.subTest(text=text[:20]):
+                mock_get.side_effect = [
+                    make_response(200, text=text),
+                    make_response(200, {"version": "2.3.0"}),
+                ]
+                with self.assertRaises(SanshainError) as ctx:
+                    SanshainClient("http://x").require(
+                        "c", "events", "1.0.0", "p", "PUB", "asyncapi", fmt="openapi"
+                    )
+                self.assertEqual(
+                    str(ctx.exception),
+                    "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)",
+                )
+
+    @mock.patch("requests.get")
     @mock.patch("requests.post")
     def test_a_non_openapi_bundle_with_unknown_server_version(
         self, mock_post: mock.MagicMock, mock_get: mock.MagicMock

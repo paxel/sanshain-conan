@@ -70,6 +70,52 @@ class TestSanshainConfig(unittest.TestCase):
                     f"{config_file} must be a mapping of settings, such as sanshainUrl: <url>",
                 )
 
+    def test_yaml_that_cannot_be_built_is_a_config_error(self) -> None:
+        config_file = os.path.join(self.test_dir, "sanshain.yaml")
+        base = "sanshainUrl: http://localhost:8080\n"
+        for text in (
+            base + "released: 2001-99-99\n",
+            base + "retries: !!int many\n",
+            base + "a: " + "[" * 5000,
+        ):
+            with self.subTest(text=text[:60]):
+                with open(config_file, "w") as f:
+                    f.write(text)
+                with self.assertRaisesRegex(ConfigError, "^Failed to parse YAML: "):
+                    load_config(config_file)
+
+    def test_an_entry_that_is_no_mapping_is_a_config_error_naming_it(self) -> None:
+        cases: list[tuple[dict[str, Any], str]] = [
+            ({"provide": 7}, "provide: must be an entry with a file"),
+            ({"provides": [None]}, "provides[0]: must be an entry with a file"),
+            ({"provides": [{"file": "a.yaml"}, "b.yaml"]}, "provides[1]: must be an entry with a file"),
+            ({"provides": 7}, "provides must be a list of entries"),
+            ({"provides": "a.yaml"}, "provides must be a list of entries"),
+            ({"requires": {"serviceName": "users"}}, "requires must be a list of entries"),
+            (
+                {"requires": [None]},
+                "requires[0]: must be an entry with serviceName, version, outputDirectory and endpoints",
+            ),
+            (
+                {"requires": ["users"]},
+                "requires[0]: must be an entry with serviceName, version, outputDirectory and endpoints",
+            ),
+        ]
+        for extra, message in cases:
+            with self.subTest(extra=extra):
+                config_file = self._write({"sanshainUrl": "http://localhost:8080", **extra})
+                with self.assertRaises(ConfigError) as ctx:
+                    load_config(config_file)
+                self.assertEqual(str(ctx.exception), message)
+
+    def test_an_empty_provides_or_requires_holds_no_entry(self) -> None:
+        config_file = os.path.join(self.test_dir, "sanshain.yaml")
+        with open(config_file, "w") as f:
+            f.write("sanshainUrl: http://localhost:8080\nprovides:\nrequires:\n")
+        config = load_config(config_file)
+        self.assertEqual(config.provides, [])
+        self.assertEqual(config.requires, [])
+
     def test_require_missing_version_names_entry_and_hints_migration(self) -> None:
         data = self._valid_data()
         del data["requires"][0]["version"]

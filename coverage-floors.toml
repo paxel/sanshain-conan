@@ -6,4 +6,4 @@
 [[parts]]
 name = "python"
 lcov = "coverage/python.lcov"
-floor = 91.99
+floor = 92.55

@@ -17,3 +17,5 @@ coverage/
 *.lcov
 coverage.xml
 .coverage
+# Inputs a fuzz run crashed on (libFuzzer writes them where it runs).
+crash-*

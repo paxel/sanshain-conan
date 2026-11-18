@@ -1,0 +1,26 @@
+name: Fuzz
+
+# The Atheris targets in fuzz/, weekly and by hand, from paxel/gates: what the client reads
+# but did not write. config is sanshain.yaml, annotations is the filling of the placeholders
+# in annotation values, response is the body and the warning headers of an answer of the
+# service, state is the require state file. A crash fails the job and leaves its input as a
+# crash-* file in the job's artifact; `uv run python fuzz/fuzz_<target>.py <that file>`
+# replays it.
+on:
+  schedule:
+    - cron: "29 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    uses: paxel/gates/.github/workflows/fuzz.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+    with:
+      stack: python
+      targets: |
+        fuzz/fuzz_config.py
+        fuzz/fuzz_annotations.py
+        fuzz/fuzz_response.py
+        fuzz/fuzz_state.py

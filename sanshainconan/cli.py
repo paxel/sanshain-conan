@@ -34,9 +34,11 @@ def format_version_conflict(error: VersionConflictError, spec_file: str, api_typ
 def etag_for(cache: SanshainCache, key: str, output_file: str) -> str | None:
     """The ETag to send as If-None-Match: none when the output file is gone,
     so the answer is a 200 that writes it again instead of a 304 that leaves it
-    missing."""
+    missing. None as well when the state file holds something else than an
+    ETag for the require: it is fetched again."""
     entry = cache.get_require_entry(key) if os.path.exists(output_file) else None
-    return entry.get("etag") if entry else None
+    etag = entry.get("etag") if isinstance(entry, dict) else None
+    return etag if isinstance(etag, str) else None
 
 
 def warn(text: str) -> None:

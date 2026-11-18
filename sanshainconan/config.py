@@ -158,8 +158,8 @@ class SanshainConfig:
         self.annotations: Any = data.get("annotations")
 
         self.provide: Any = data.get("provide")
-        self.provides = data.get("provides", [])
-        self.requires = data.get("requires", [])
+        self.provides: Any = data.get("provides", [])
+        self.requires: Any = data.get("requires", [])
 
         # Order: legacy-field rejections, then unknown fields (the cat; under
         # strict they fail here), then the remaining validation error — so a
@@ -197,9 +197,14 @@ class SanshainConfig:
         reject_branch_era(data, "sanshain.yaml", _BRANCH_HINT_REQUIRE)
         if data.get("provide"):
             reject_branch_era(data["provide"], "provide", _BRANCH_HINT_PROVIDE)
-        for i, p in enumerate(data.get("provides") or []):
+
+        def entries(value: Any) -> list[Any]:
+            # Anything but a list is refused by name in _validate.
+            return value if isinstance(value, list) else []
+
+        for i, p in enumerate(entries(data.get("provides"))):
             reject_branch_era(p, f"provides[{i}]", _BRANCH_HINT_PROVIDE)
-        for i, req in enumerate(data.get("requires") or []):
+        for i, req in enumerate(entries(data.get("requires"))):
             name = req.get("serviceName") if isinstance(req, dict) else None
             context = f"requires[{i}] ({name})" if name else f"requires[{i}]"
             reject_branch_era(req, context, _BRANCH_HINT_REQUIRE)
@@ -211,7 +216,18 @@ class SanshainConfig:
             raise ConfigError(f"autoGa must be true or false, not {self.auto_ga!r}")
         self._validate_annotations()
 
+        # An empty `provides:` or `requires:` holds no entry; anything but a list is an error.
+        if self.provides is None:
+            self.provides = []
+        if self.requires is None:
+            self.requires = []
+        for field, value in (("provides", self.provides), ("requires", self.requires)):
+            if not isinstance(value, list):
+                raise ConfigError(f"{field} must be a list of entries")
+
         def validate_provide(p: Any, context: str) -> None:
+            if not isinstance(p, dict):
+                raise ConfigError(f"{context}: must be an entry with a file")
             if "apiType" in p and p["apiType"] not in _API_TYPES:
                 raise ConfigError(f"{context}: {_unsupported_api_type(p['apiType'])}")
             # A retired entry names its family via apiType alone: the project
@@ -232,6 +248,11 @@ class SanshainConfig:
             validate_provide(p, f"provides[{i}]")
 
         for i, req in enumerate(self.requires):
+            if not isinstance(req, dict):
+                raise ConfigError(
+                    f"requires[{i}]: must be an entry with serviceName, version, outputDirectory "
+                    "and endpoints"
+                )
             if "serviceName" not in req:
                 raise ConfigError("Missing required field in require entry: serviceName")
             name = req["serviceName"]
@@ -296,6 +317,10 @@ def load_config(path: str | os.PathLike[str], best_effort: bool = False) -> Sans
         raise ConfigError(f"Cannot read config file {path}: {e.strerror or e}") from e
     except UnicodeDecodeError as e:
         raise ConfigError(f"Cannot read config file {path}: {e}") from e
+    except (ValueError, RecursionError) as e:
+        # PyYAML raises these itself for a value it cannot build, such as the date
+        # 2001-99-99, and for a file nested deeper than Python follows.
+        raise ConfigError(f"Failed to parse YAML: {e}") from e
     if data is None:
         raise ConfigError(f"Config file is empty: {path}")
     if not isinstance(data, dict):

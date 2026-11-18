@@ -554,7 +554,8 @@ class SanshainClient:
             return
         try:
             doc = yaml.safe_load(response.text)
-        except yaml.YAMLError:
+        except (yaml.YAMLError, ValueError, RecursionError):
+            # No YAML, or YAML PyYAML cannot build a value from: no OpenAPI document either way.
             doc = None
         if isinstance(doc, dict) and "openapi" in doc:
             return

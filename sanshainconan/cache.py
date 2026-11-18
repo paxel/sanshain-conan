@@ -24,7 +24,9 @@ class SanshainCache:
                     state = json.load(f)
                     if isinstance(state, dict) and isinstance(state.get("requires"), dict):
                         return {"requires": state["requires"]}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError, RecursionError):
+            # Unreadable, not JSON, not text at all or nested too deeply: an empty state, every
+            # require is fetched.
             pass
         return {"requires": {}}
 

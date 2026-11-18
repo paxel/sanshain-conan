@@ -38,3 +38,13 @@ effectiveUntil = 2027-02-18
 reason = """deps.dev reports colorama's licence as non-standard; its LICENSE.txt is the \
 3-clause BSD licence. It comes only through pytest on Windows and is installed for the tests \
 only."""
+
+# The fuzzer of the targets in fuzz/. It is not in the published package or among its
+# dependencies.
+[[PackageOverrides]]
+name = "atheris"
+ecosystem = "PyPI"
+license.override = ["Apache-2.0"]
+effectiveUntil = 2027-02-18
+reason = """deps.dev reports no licence for atheris; its LICENSE in google/atheris is \
+Apache-2.0. It is installed for the fuzz run only."""

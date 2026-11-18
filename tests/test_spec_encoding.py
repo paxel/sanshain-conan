@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -18,20 +19,20 @@ SPEC = "openapi: 3.0.3\ninfo:\n  title: Grüße\n  version: 1.2.0\n"
 
 
 class TestSpecEncoding(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.config_file = os.path.join(self.folder, "sanshain.yaml")
         with open(self.config_file, "w") as f:
             yaml.dump({"sanshainUrl": "http://x", "serviceName": "svc", "provide": {"file": "api.yaml"}}, f)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.folder)
 
-    def write_spec(self, data):
+    def write_spec(self, data: bytes) -> None:
         with open(os.path.join(self.folder, "api.yaml"), "wb") as f:
             f.write(data)
 
-    def provide_cli(self):
+    def provide_cli(self) -> Any:
         client = mock.Mock()
         client.provide.return_value = {}
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -41,9 +42,12 @@ class TestSpecEncoding(unittest.TestCase):
                         main()
         return client.provide.call_args[0][1]
 
-    def provide_helper(self):
+    def provide_helper(self) -> Any:
         conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder,
+            recipe_folder=self.folder,
+            source_folder=self.folder,
+            output=mock.Mock(),
         )
         with mock.patch.dict(os.environ, {}, clear=True):
             sanshain = Sanshain(conanfile)
@@ -52,19 +56,19 @@ class TestSpecEncoding(unittest.TestCase):
         sanshain.provide()
         return sanshain.client.provide.call_args[0][1]
 
-    def test_a_bom_is_stripped(self):
+    def test_a_bom_is_stripped(self) -> None:
         self.write_spec(b"\xef\xbb\xbf" + SPEC.encode("utf-8"))
         self.assertEqual(self.provide_cli(), SPEC)
         self.assertEqual(self.provide_helper(), SPEC)
 
-    def test_spec_files_are_opened_as_utf8(self):
+    def test_spec_files_are_opened_as_utf8(self) -> None:
         # Explicit, so the locale encoding (e.g. cp1252 on Windows) never applies.
         self.write_spec(SPEC.encode("utf-8"))
         real_open = open
         encodings = []
         spec_path = os.path.join(self.folder, "api.yaml")
 
-        def spy(path, mode="r", *args, **kwargs):
+        def spy(path: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
             if str(path) == spec_path:
                 encodings.append(kwargs.get("encoding"))
             return real_open(path, mode, *args, **kwargs)
@@ -78,19 +82,21 @@ class TestSpecEncoding(unittest.TestCase):
 class TestConfigAndCatalogEncoding(unittest.TestCase):
     CATALOG = "apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: svc\n  title: Grüße\n"
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.config_file = os.path.join(self.folder, "sanshain.yaml")
-        config = "sanshainUrl: http://x\nserviceName: svc\ncatalogInfo: catalog-info.yaml\nclientName: Grüße\n"
+        config = (
+            "sanshainUrl: http://x\nserviceName: svc\ncatalogInfo: catalog-info.yaml\nclientName: Grüße\n"
+        )
         with open(self.config_file, "wb") as f:
             f.write(b"\xef\xbb\xbf" + config.encode("utf-8"))
         with open(os.path.join(self.folder, "catalog-info.yaml"), "wb") as f:
             f.write(b"\xef\xbb\xbf" + self.CATALOG.encode("utf-8"))
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.folder)
 
-    def test_config_with_bom_and_umlaut_loads(self):
+    def test_config_with_bom_and_umlaut_loads(self) -> None:
         from sanshainconan.config import load_config
 
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -99,7 +105,7 @@ class TestConfigAndCatalogEncoding(unittest.TestCase):
         self.assertEqual(config.catalog_info, "catalog-info.yaml")
         self.assertEqual(config.unknown_fields, [])
 
-    def test_catalog_is_uploaded_as_utf8_without_bom(self):
+    def test_catalog_is_uploaded_as_utf8_without_bom(self) -> None:
         resp = mock.Mock(status_code=200)
         resp.json.return_value = {"system": "svc", "trunk": False, "resources": []}
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -109,13 +115,13 @@ class TestConfigAndCatalogEncoding(unittest.TestCase):
                         main()
         self.assertEqual(mock_put.call_args[1]["json"]["catalog_info_yaml"], self.CATALOG)
 
-    def test_config_and_catalog_are_opened_as_utf8(self):
+    def test_config_and_catalog_are_opened_as_utf8(self) -> None:
         # Explicit, so the locale encoding (e.g. cp1252 on Windows) never applies.
         real_open = open
         encodings = {}
         watched = {self.config_file: "config", os.path.join(self.folder, "catalog-info.yaml"): "catalog"}
 
-        def spy(path, mode="r", *args, **kwargs):
+        def spy(path: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
             if str(path) in watched:
                 encodings[watched[str(path)]] = kwargs.get("encoding")
             return real_open(path, mode, *args, **kwargs)

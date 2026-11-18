@@ -47,9 +47,10 @@ The `conanfile.py` requires during `conan install`:
 from conan import ConanFile
 from sanshainconan import Sanshain
 
+
 class MyProject(ConanFile):
     def generate(self):
-        Sanshain(self).require()   # writes generated/sanshain/other-service.yaml
+        Sanshain(self).require()  # writes generated/sanshain/other-service.yaml
 ```
 
 The pipeline provides from the command line after the tests, with `SANSHAIN_URL` and `SANSHAIN_TOKEN` in the environment (flags go before the command):

@@ -24,20 +24,26 @@ build-backend = "hatchling.build"
 packages = ["sanshainconan"]
 
 [dependency-groups]
+# The tools that check the package: the commands of the shared Python gate.
 dev = [
-    "flake8",
-    "black",
-    "bandit",
-    "mypy",
+    "ruff==0.17.3",
+    "mypy==2.4.1",
+    "pytest==9.2.0",
+    "pytest-cov==7.1.0",
     "types-requests",
     "types-PyYAML",
-    "coverage",
 ]
 
-[tool.black]
-line-length = 120
-target-version = ['py311']
-include = '\.pyi?$'
+[tool.mypy]
+strict = true
+# The oldest Python the package runs on (requires-python): the types are checked against it.
+python_version = "3.11"
 
-[tool.bandit]
-exclude_dirs = ["tests", ".venv", "venv"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["sanshainconan"]
+# The Cobertura XML then names sanshainconan/, not the runner path of the job that measured
+# it; SonarQube Cloud reads it in another job.
+relative_files = true

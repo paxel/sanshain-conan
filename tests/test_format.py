@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import requests
@@ -24,7 +25,9 @@ ONE = [{"method": "PUB", "path": "user/signup"}]
 TWO = ONE + [{"method": "PUB", "path": "order/placed"}]
 
 
-def make_response(status_code=200, json_data=None, text="", headers=None):
+def make_response(
+    status_code: int = 200, json_data: Any = None, text: str = "", headers: dict[str, str] | None = None
+) -> mock.Mock:
     resp = mock.Mock()
     resp.status_code = status_code
     resp.text = text
@@ -37,22 +40,22 @@ def make_response(status_code=200, json_data=None, text="", headers=None):
     return resp
 
 
-def entry(**extra):
+def entry(**extra: Any) -> dict[str, Any]:
     return {"serviceName": "events", "version": "1.0.0", "outputDirectory": "gen", "endpoints": ONE, **extra}
 
 
 class TestFormatConfig(unittest.TestCase):
-    def config(self, **extra):
+    def config(self, **extra: Any) -> SanshainConfig:
         return SanshainConfig({"sanshainUrl": "http://x", "serviceName": "svc", "requires": [entry(**extra)]})
 
-    def test_asyncapi_with_openapi_is_accepted(self):
+    def test_asyncapi_with_openapi_is_accepted(self) -> None:
         self.assertEqual(self.config(apiType="asyncapi", format="openapi").requires[0]["format"], "openapi")
 
-    def test_format_is_a_known_field(self):
+    def test_format_is_a_known_field(self) -> None:
         data = {"sanshainUrl": "x", "requires": [entry(apiType="asyncapi", format="openapi")]}
         self.assertEqual(find_unknown_fields(data), [])
 
-    def test_other_api_types_are_rejected(self):
+    def test_other_api_types_are_rejected(self) -> None:
         for api_type in (None, "openapi", "proto"):
             with self.subTest(api_type=api_type):
                 extra = {"format": "openapi"}
@@ -64,14 +67,14 @@ class TestFormatConfig(unittest.TestCase):
                 self.assertIn("requires[0] (events)", msg)
                 self.assertIn("apiType: asyncapi with format: openapi", msg)
 
-    def test_unknown_values_are_rejected(self):
+    def test_unknown_values_are_rejected(self) -> None:
         with self.assertRaisesRegex(ConfigError, r"requires\[0\] \(events\): format 'html'"):
             self.config(apiType="asyncapi", format="html")
 
 
 class TestFormatOnTheWire(unittest.TestCase):
     @mock.patch("requests.get")
-    def test_single_require_sends_the_query_parameter(self, mock_get):
+    def test_single_require_sends_the_query_parameter(self, mock_get: mock.MagicMock) -> None:
         mock_get.return_value = make_response(200, text=OPENAPI)
         res = SanshainClient("http://x").require(
             "c", "events", "1.0.0", "user/signup", "PUB", "asyncapi", fmt="openapi"
@@ -81,7 +84,7 @@ class TestFormatOnTheWire(unittest.TestCase):
         self.assertEqual(res["content"], OPENAPI)
 
     @mock.patch("requests.post")
-    def test_bundle_sends_the_query_parameter(self, mock_post):
+    def test_bundle_sends_the_query_parameter(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(200, text=OPENAPI)
         SanshainClient("http://x").require_bundle("c", "events", "1.0.0", TWO, "asyncapi", fmt="openapi")
         self.assertEqual(mock_post.call_args[1]["params"], {"format": "openapi"})
@@ -89,7 +92,9 @@ class TestFormatOnTheWire(unittest.TestCase):
 
     @mock.patch("requests.post")
     @mock.patch("requests.get")
-    def test_nothing_changes_without_format(self, mock_get, mock_post):
+    def test_nothing_changes_without_format(
+        self, mock_get: mock.MagicMock, mock_post: mock.MagicMock
+    ) -> None:
         mock_get.return_value = make_response(200, text=ASYNCAPI)
         mock_post.return_value = make_response(200, text=ASYNCAPI)
         client = SanshainClient("http://x")
@@ -99,48 +104,64 @@ class TestFormatOnTheWire(unittest.TestCase):
         self.assertIsNone(mock_post.call_args[1]["params"])
 
     @mock.patch("requests.get")
-    def test_a_non_openapi_answer_needs_service_2_4(self, mock_get):
+    def test_a_non_openapi_answer_needs_service_2_4(self, mock_get: mock.MagicMock) -> None:
         mock_get.side_effect = [make_response(200, text=ASYNCAPI), make_response(200, {"version": "2.3.0"})]
         with self.assertRaises(SanshainError) as ctx:
             SanshainClient("http://x").require("c", "events", "1.0.0", "p", "PUB", "asyncapi", fmt="openapi")
-        self.assertEqual(str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)")
+        self.assertEqual(
+            str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)"
+        )
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_a_non_openapi_bundle_with_unknown_server_version(self, mock_post, mock_get):
+    def test_a_non_openapi_bundle_with_unknown_server_version(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         mock_post.return_value = make_response(200, text=ASYNCAPI)
         mock_get.side_effect = requests.ConnectionError("down")
         with self.assertRaises(SanshainError) as ctx:
             SanshainClient("http://x").require_bundle("c", "events", "1.0.0", TWO, "asyncapi", fmt="openapi")
         self.assertEqual(
-            str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)"
+            str(ctx.exception),
+            "format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)",
         )
 
 
 class TestOldServerRejectsFormat(unittest.TestCase):
     REJECTED = "Failed to deserialize query string: unknown field `format`, expected one of `consumername`"
 
-    def require(self):
-        return SanshainClient("http://x").require("c", "events", "1.0.0", "p", "PUB", "asyncapi", fmt="openapi")
-
-    @mock.patch("requests.get")
-    def test_400_from_a_2_3_server_needs_2_4(self, mock_get):
-        mock_get.side_effect = [make_response(400, text=self.REJECTED), make_response(200, {"version": "2.3.0"})]
-        with self.assertRaises(SanshainError) as ctx:
-            self.require()
-        self.assertEqual(str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)")
-
-    @mock.patch("requests.get")
-    def test_400_with_unknown_server_version(self, mock_get):
-        mock_get.side_effect = [make_response(400, text=self.REJECTED.upper()), requests.ConnectionError("down")]
-        with self.assertRaises(SanshainError) as ctx:
-            self.require()
-        self.assertEqual(
-            str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)"
+    def require(self) -> dict[str, Any]:
+        return SanshainClient("http://x").require(
+            "c", "events", "1.0.0", "p", "PUB", "asyncapi", fmt="openapi"
         )
 
     @mock.patch("requests.get")
-    def test_400_from_a_2_4_server_passes_through(self, mock_get):
+    def test_400_from_a_2_3_server_needs_2_4(self, mock_get: mock.MagicMock) -> None:
+        mock_get.side_effect = [
+            make_response(400, text=self.REJECTED),
+            make_response(200, {"version": "2.3.0"}),
+        ]
+        with self.assertRaises(SanshainError) as ctx:
+            self.require()
+        self.assertEqual(
+            str(ctx.exception), "format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)"
+        )
+
+    @mock.patch("requests.get")
+    def test_400_with_unknown_server_version(self, mock_get: mock.MagicMock) -> None:
+        mock_get.side_effect = [
+            make_response(400, text=self.REJECTED.upper()),
+            requests.ConnectionError("down"),
+        ]
+        with self.assertRaises(SanshainError) as ctx:
+            self.require()
+        self.assertEqual(
+            str(ctx.exception),
+            "format: openapi needs Sanshain Service 2.4.0 or later (server version unknown)",
+        )
+
+    @mock.patch("requests.get")
+    def test_400_from_a_2_4_server_passes_through(self, mock_get: mock.MagicMock) -> None:
         error = "cannot convert to format openapi: message payload is Avro"
         mock_get.side_effect = [
             make_response(400, {"error": error}, text=error),
@@ -153,15 +174,18 @@ class TestOldServerRejectsFormat(unittest.TestCase):
         self.assertNotIn("needs Sanshain Service", str(ctx.exception))
 
     @mock.patch("requests.get")
-    def test_400_without_format_is_unchanged(self, mock_get):
-        mock_get.side_effect = [make_response(400, text=self.REJECTED), make_response(200, {"version": "2.3.0"})]
+    def test_400_without_format_is_unchanged(self, mock_get: mock.MagicMock) -> None:
+        mock_get.side_effect = [
+            make_response(400, text=self.REJECTED),
+            make_response(200, {"version": "2.3.0"}),
+        ]
         with self.assertRaises(SanshainError) as ctx:
             SanshainClient("http://x").require("c", "events", "1.0.0", "p", "PUB", "asyncapi")
         self.assertIn("status 400", str(ctx.exception))
 
 
 class TestEtagPerFormat(unittest.TestCase):
-    def test_keys_differ_by_format(self):
+    def test_keys_differ_by_format(self) -> None:
         self.assertNotEqual(
             SanshainCache.require_key("e", "1.0.0", "PUB", "p"),
             SanshainCache.require_key("e", "1.0.0", "PUB", "p", "openapi"),
@@ -171,31 +195,36 @@ class TestEtagPerFormat(unittest.TestCase):
             SanshainCache.require_bundle_key("e", "1.0.0", "openapi"),
         )
 
-    def test_keys_without_format_are_unchanged(self):
+    def test_keys_without_format_are_unchanged(self) -> None:
         self.assertEqual(SanshainCache.require_key("e", "1.0.0", "GET", "/x"), "e|1.0.0|GET|/x")
         self.assertEqual(SanshainCache.require_bundle_key("e", "1.0.0"), "e|1.0.0|bundle")
 
 
 class FormatProject(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.cwd = os.getcwd()
         os.chdir(self.folder)  # keep the .sanshain-cache inside the temp dir
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         os.chdir(self.cwd)
         shutil.rmtree(self.folder)
 
-    def write_config(self, requires, **extra):
+    def write_config(self, requires: list[dict[str, Any]], **extra: Any) -> str:
         path = os.path.join(self.folder, "sanshain.yaml")
         with open(path, "w") as f:
-            yaml.dump({"sanshainUrl": "http://localhost:8080", "serviceName": "svc", "requires": requires, **extra}, f)
+            yaml.dump(
+                {"sanshainUrl": "http://localhost:8080", "serviceName": "svc", "requires": requires, **extra},
+                f,
+            )
         return path
 
-    def run_cli(self, config_file, *extra, get=None):
+    def run_cli(
+        self, config_file: str, *extra: str, get: Any = None
+    ) -> tuple[str | int | None, str, str, mock.MagicMock]:
         argv = ["sanshain-conan", "--config", config_file, *extra, "require"]
         out, err = io.StringIO(), io.StringIO()
-        code = 0
+        code: str | int | None = 0
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch("requests.get", side_effect=get) as mock_get:
                 with mock.patch("sys.argv", argv):
@@ -208,7 +237,7 @@ class FormatProject(unittest.TestCase):
 
 
 class TestCliFormat(FormatProject):
-    def test_both_formats_side_by_side_with_their_own_etags(self):
+    def test_both_formats_side_by_side_with_their_own_etags(self) -> None:
         config_file = self.write_config(
             [
                 entry(apiType="asyncapi", outputDirectory="async"),
@@ -233,14 +262,14 @@ class TestCliFormat(FormatProject):
         self.assertEqual(requires["events|1.0.0|PUB|user/signup|out=async"]["etag"], '"a"')
         self.assertEqual(requires["events|1.0.0|PUB|user/signup|format=openapi|out=rest"]["etag"], '"o"')
 
-    def test_wrong_api_type_is_rejected_before_any_call(self):
+    def test_wrong_api_type_is_rejected_before_any_call(self) -> None:
         config_file = self.write_config([entry(format="openapi")])
         code, out, _, mock_get = self.run_cli(config_file)
         self.assertEqual(code, 1)
         self.assertIn("apiType: asyncapi with format: openapi", out)
         mock_get.assert_not_called()
 
-    def test_non_openapi_answer_fails(self):
+    def test_non_openapi_answer_fails(self) -> None:
         config_file = self.write_config([entry(apiType="asyncapi", format="openapi")])
         code, out, _, _ = self.run_cli(
             config_file, get=[make_response(200, text=ASYNCAPI), make_response(200, {"version": "2.3.0"})]
@@ -249,7 +278,7 @@ class TestCliFormat(FormatProject):
         self.assertIn("format: openapi needs Sanshain Service 2.4.0 or later (server is 2.3.0)", out)
         self.assertFalse(os.path.exists(os.path.join(self.folder, "gen", "events.yaml")))
 
-    def test_best_effort_warns_and_writes_nothing(self):
+    def test_best_effort_warns_and_writes_nothing(self) -> None:
         config_file = self.write_config([entry(apiType="asyncapi", format="openapi")])
         code, out, _, _ = self.run_cli(
             config_file,
@@ -262,7 +291,7 @@ class TestCliFormat(FormatProject):
         self.assertFalse(os.path.exists(os.path.join(self.folder, "gen", "events.yaml")))
         self.assertEqual(SanshainCache().state["requires"], {})
 
-    def test_best_effort_warns_on_an_old_server_400(self):
+    def test_best_effort_warns_on_an_old_server_400(self) -> None:
         config_file = self.write_config([entry(apiType="asyncapi", format="openapi")])
         code, out, _, _ = self.run_cli(
             config_file,
@@ -279,15 +308,18 @@ class TestCliFormat(FormatProject):
 
 
 class TestHelperFormat(FormatProject):
-    def helper(self):
+    def helper(self) -> Sanshain:
         conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder,
+            recipe_folder=self.folder,
+            source_folder=self.folder,
+            output=mock.Mock(),
         )
         with mock.patch.dict(os.environ, {}, clear=True):
             return Sanshain(conanfile)
 
     @mock.patch("requests.get")
-    def test_sends_the_format_and_writes_the_openapi(self, mock_get):
+    def test_sends_the_format_and_writes_the_openapi(self, mock_get: mock.MagicMock) -> None:
         self.write_config([entry(apiType="asyncapi", format="openapi")])
         mock_get.return_value = make_response(200, text=OPENAPI)
         self.helper().require()
@@ -295,13 +327,13 @@ class TestHelperFormat(FormatProject):
         with open(os.path.join(self.folder, "gen", "events.yaml")) as f:
             self.assertEqual(f.read(), OPENAPI)
 
-    def test_wrong_api_type_raises(self):
+    def test_wrong_api_type_raises(self) -> None:
         self.write_config([entry(apiType="proto", format="openapi")])
         with self.assertRaisesRegex(ConfigError, r"requires\[0\] \(events\)"):
             self.helper()
 
     @mock.patch("requests.get")
-    def test_best_effort_warns_on_a_non_openapi_answer(self, mock_get):
+    def test_best_effort_warns_on_a_non_openapi_answer(self, mock_get: mock.MagicMock) -> None:
         self.write_config([entry(apiType="asyncapi", format="openapi")], bestEffort=True)
         mock_get.side_effect = [make_response(200, text=ASYNCAPI), make_response(200, {"version": "2.3.0"})]
         sanshain = self.helper()

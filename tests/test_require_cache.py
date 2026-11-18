@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -16,16 +17,18 @@ from sanshainconan.cli import main
 
 
 class TestKeys(unittest.TestCase):
-    def test_the_output_directory_is_part_of_the_key(self):
+    def test_the_output_directory_is_part_of_the_key(self) -> None:
         self.assertEqual(SanshainCache.require_key("u", "1.0.0", "GET", "/x"), "u|1.0.0|GET|/x")
         self.assertEqual(
             SanshainCache.require_key("u", "1.0.0", "GET", "/x", "openapi", "gen/a"),
             "u|1.0.0|GET|/x|format=openapi|out=gen/a",
         )
-        self.assertEqual(SanshainCache.require_bundle_key("u", "1.0.0", None, "gen/b"), "u|1.0.0|bundle|out=gen/b")
+        self.assertEqual(
+            SanshainCache.require_bundle_key("u", "1.0.0", None, "gen/b"), "u|1.0.0|bundle|out=gen/b"
+        )
 
-    def test_two_spellings_of_one_directory_share_a_key_two_directories_do_not(self):
-        def key(directory):
+    def test_two_spellings_of_one_directory_share_a_key_two_directories_do_not(self) -> None:
+        def key(directory: str) -> str:
             return SanshainCache.require_key("u", "1.0.0", "GET", "/x", None, directory)
 
         self.assertEqual(key("./gen//a/"), key("gen/a"))
@@ -34,7 +37,7 @@ class TestKeys(unittest.TestCase):
 
 
 class TestCliRequireCache(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.folder)
         self.cwd = os.getcwd()
@@ -42,7 +45,7 @@ class TestCliRequireCache(unittest.TestCase):
         self.addCleanup(os.chdir, self.cwd)
         self.config_file = os.path.join(self.folder, "sanshain.yaml")
 
-    def write(self, *directories):
+    def write(self, *directories: str) -> None:
         entries = [
             {
                 "serviceName": "users",
@@ -55,9 +58,9 @@ class TestCliRequireCache(unittest.TestCase):
         with open(self.config_file, "w") as f:
             yaml.dump({"sanshainUrl": "http://localhost:3000", "serviceName": "svc", "requires": entries}, f)
 
-    def run_cli(self):
+    def run_cli(self) -> tuple[mock.Mock, str]:
         # A 304 whenever an ETag is sent, as the service answers an unchanged spec.
-        def require(*args, **kwargs):
+        def require(*args: Any, **kwargs: Any) -> dict[str, Any]:
             if args[6]:
                 return {"not_modified": True, "content": None, "etag": None}
             return {"not_modified": False, "content": "paths: {}", "body": b"paths: {}", "etag": '"e1"'}
@@ -72,21 +75,22 @@ class TestCliRequireCache(unittest.TestCase):
                         main()
         return client, out.getvalue()
 
-    def read(self, *parts):
+    def read(self, *parts: str) -> bytes:
         with open(os.path.join(self.folder, *parts), "rb") as f:
             return f.read()
 
-    def test_the_same_endpoint_required_into_two_directories_is_written_to_both(self):
+    def test_the_same_endpoint_required_into_two_directories_is_written_to_both(self) -> None:
         self.write("gen/a", "gen/b")
         self.run_cli()
         self.assertEqual(self.read("gen", "a", "users.yaml"), b"paths: {}")
         self.assertEqual(self.read("gen", "b", "users.yaml"), b"paths: {}")
         with open(os.path.join(self.folder, ".sanshain-cache", "state.json")) as f:
             self.assertEqual(
-                list(json.load(f)["requires"]), ["users|1.0.0|GET|/users|out=gen/a", "users|1.0.0|GET|/users|out=gen/b"]
+                list(json.load(f)["requires"]),
+                ["users|1.0.0|GET|/users|out=gen/a", "users|1.0.0|GET|/users|out=gen/b"],
             )
 
-    def test_a_deleted_output_file_is_fetched_again(self):
+    def test_a_deleted_output_file_is_fetched_again(self) -> None:
         self.write("gen")
         self.run_cli()
         os.remove(os.path.join(self.folder, "gen", "users.yaml"))
@@ -94,7 +98,7 @@ class TestCliRequireCache(unittest.TestCase):
         self.assertIsNone(client.require.call_args.args[6])
         self.assertEqual(self.read("gen", "users.yaml"), b"paths: {}")
 
-    def test_a_present_output_file_still_sends_the_stored_etag(self):
+    def test_a_present_output_file_still_sends_the_stored_etag(self) -> None:
         self.write("gen")
         self.run_cli()
         client, out = self.run_cli()

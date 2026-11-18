@@ -2,6 +2,8 @@ import json
 import os
 import string
 import sys
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, NoReturn, TypeVar
 from urllib.parse import quote
 
 import requests
@@ -12,8 +14,12 @@ from .config import env_flag
 HTTP_TIMEOUT = 30
 WARNING_HEADER = "Sanshain-Warning"
 
+_T = TypeVar("_T")
+# Annotations as they are sent: entries with scope, name and value.
+_Annotations = Sequence[Mapping[str, Any]]
 
-def sanitize(text):
+
+def sanitize(text: str | None) -> str:
     if not text:
         return ""
     if len(text) > 1000:
@@ -23,7 +29,7 @@ def sanitize(text):
     return "".join(c if c in printable else "?" for c in text)
 
 
-def _parse_version(version_str):
+def _parse_version(version_str: object) -> tuple[int, ...] | None:
     try:
         parts = [int(p) for p in str(version_str).strip().split(".")[:3]]
     except ValueError:
@@ -33,12 +39,12 @@ def _parse_version(version_str):
     return tuple(parts)
 
 
-def _is_pre_2(version_str):
+def _is_pre_2(version_str: object) -> bool:
     parts = _parse_version(version_str)
     return parts is not None and parts < (2, 0, 0)
 
 
-def normalize_line_endings(content):
+def normalize_line_endings(content: str | None) -> str | None:
     """Rewrite CRLF (and stray CR) to LF before upload.
 
     Sanshain compares provided content byte for byte, so a Windows checkout of
@@ -54,7 +60,9 @@ BOTH_STREAMS = "trunk and tag are mutually exclusive - this build is recorded in
 
 
 ORIGIN_FIELDS = ("build_url", "change_url", "tickets", "note")
-ORIGIN_DROPPED_WARNING = "Sanshain Service before 2.9.0 does not take the build's origin; providing without it"
+ORIGIN_DROPPED_WARNING = (
+    "Sanshain Service before 2.9.0 does not take the build's origin; providing without it"
+)
 ANNOTATIONS_DROPPED_WARNING = "Sanshain Service before 2.13.0 does not take annotations; sending without them"
 # Matched exactly: the refusal of a 2.9-2.12 service lists every field it
 # knows after "expected one of", so a bare field name is not enough.
@@ -63,7 +71,7 @@ ANNOTATIONS_REFUSED = "unknown field `annotations`"
 RELEASER_REFUSAL = "requires the 'releaser' role"
 
 
-def _first(*values):
+def _first(*values: object) -> str | None:
     """The first value that is not blank, stripped; None when there is none."""
     for value in values:
         if value is not None and str(value).strip():
@@ -71,14 +79,15 @@ def _first(*values):
     return None
 
 
-def _runner_build_url(env):
-    server, repo, run = env.get("GITHUB_SERVER_URL"), env.get("GITHUB_REPOSITORY"), env.get("GITHUB_RUN_ID")
-    if _first(server) and _first(repo) and _first(run):
-        return f"{server.strip()}/{repo.strip()}/actions/runs/{run.strip()}"
+def _runner_build_url(env: Mapping[str, str]) -> str | None:
+    server, repo = _first(env.get("GITHUB_SERVER_URL")), _first(env.get("GITHUB_REPOSITORY"))
+    run = _first(env.get("GITHUB_RUN_ID"))
+    if server and repo and run:
+        return f"{server}/{repo}/actions/runs/{run}"
     return _first(env.get("CI_JOB_URL"), env.get("BUILD_URL"))
 
 
-def _runner_change_url(env):
+def _runner_change_url(env: Mapping[str, str]) -> str | None:
     server, repo = _first(env.get("GITHUB_SERVER_URL")), _first(env.get("GITHUB_REPOSITORY"))
     ref = (env.get("GITHUB_REF") or "").strip()
     if server and repo and ref.startswith("refs/pull/"):
@@ -91,7 +100,13 @@ def _runner_change_url(env):
     return _first(env.get("CHANGE_URL"))
 
 
-def resolve_origin(build_url=None, change_url=None, tickets=None, note=None, env=None):
+def resolve_origin(
+    build_url: str | None = None,
+    change_url: str | None = None,
+    tickets: str | None = None,
+    note: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """What the pipeline knows about why a provide runs, as payload fields.
 
     An explicit value first, then SANSHAIN_BUILD_URL / SANSHAIN_CHANGE_URL /
@@ -101,11 +116,11 @@ def resolve_origin(build_url=None, change_url=None, tickets=None, note=None, env
     read from git. Only known fields are present: the server refuses nulls.
     """
     env = os.environ if env is None else env
-    origin = {}
+    origin: dict[str, Any] = {}
     build = _first(build_url, env.get("SANSHAIN_BUILD_URL"), _runner_build_url(env))
     change = _first(change_url, env.get("SANSHAIN_CHANGE_URL"), _runner_change_url(env))
     text = _first(note, env.get("SANSHAIN_NOTE"))
-    ids = []
+    ids: list[str] = []
     for raw in (_first(tickets, env.get("SANSHAIN_TICKETS")) or "").split(","):
         ticket = raw.strip()
         if ticket and ticket not in ids:
@@ -121,14 +136,14 @@ def resolve_origin(build_url=None, change_url=None, tickets=None, note=None, env
     return origin
 
 
-def _declared_stream(trunk_flag=False, tag=None):
+def _declared_stream(trunk_flag: bool = False, tag: str | None = None) -> tuple[bool, str | None]:
     """Trunk and the tag as this build declares them, the flags before SANSHAIN_TRUNK / SANSHAIN_TAG."""
     trunk = bool(trunk_flag) or env_flag("SANSHAIN_TRUNK")
     resolved_tag = (tag or os.environ.get("SANSHAIN_TAG") or "").strip() or None
     return trunk, resolved_tag
 
 
-def stream_declared(trunk_flag=False, tag=None):
+def stream_declared(trunk_flag: bool = False, tag: str | None = None) -> bool:
     """Whether the build declares a stream: trunk, a tag, or both — which
     sends neither (with a warning) but still declared one. This is what makes
     a provide GA under `autoGa: true`."""
@@ -136,7 +151,7 @@ def stream_declared(trunk_flag=False, tag=None):
     return trunk or resolved_tag is not None
 
 
-def resolve_stability(ga_flag=False, auto_ga=False, declared=False):
+def resolve_stability(ga_flag: bool = False, auto_ga: bool = False, declared: bool = False) -> str:
     """The stability of a provide; the first of these that is set decides:
 
     1. the --ga flag (it can only say ga);
@@ -156,7 +171,12 @@ def resolve_stability(ga_flag=False, auto_ga=False, declared=False):
     return "ga" if auto_ga and declared else "snapshot"
 
 
-def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
+def resolve_stream(
+    trunk_flag: bool = False,
+    tag: str | None = None,
+    strict: bool = False,
+    warn: Callable[[str], object] | None = None,
+) -> tuple[bool, str | None]:
     """Resolve which dependency graph this build's calls belong to.
 
     The stream is a property of the invocation, never of sanshain.yaml: the
@@ -180,7 +200,7 @@ def resolve_stream(trunk_flag=False, tag=None, strict=False, warn=None):
     return trunk, resolved_tag
 
 
-def warning_lines(response):
+def warning_lines(response: object) -> list[str]:
     """Every Sanshain-Warning header line of a response, one entry per line.
 
     requests joins repeated headers with commas in `response.headers`, and a
@@ -209,7 +229,7 @@ class StrictError(Exception):
     it before the strict failure.
     """
 
-    def __init__(self, message, error=None):
+    def __init__(self, message: str, error: Exception | None = None) -> None:
         self.error = error
         super().__init__(message)
 
@@ -225,14 +245,21 @@ class VersionConflictError(SanshainError):
     version to publish as instead.
     """
 
-    def __init__(self, server_message, proposed_version):
+    def __init__(self, server_message: str, proposed_version: str) -> None:
         self.server_message = server_message
         self.proposed_version = proposed_version
         super().__init__(f"{server_message} (proposed_version: {proposed_version})")
 
 
 class SanshainClient:
-    def __init__(self, url, token=None, insecure=False, on_warning=None, strict=False):
+    def __init__(
+        self,
+        url: str,
+        token: str | None = None,
+        insecure: bool = False,
+        on_warning: Callable[[str], object] | None = None,
+        strict: bool = False,
+    ) -> None:
         """`on_warning` receives every Sanshain-Warning header line as
         received; with `strict` a call that carried one raises StrictError
         after it."""
@@ -240,14 +267,14 @@ class SanshainClient:
         self.on_warning = on_warning
         self.strict = strict
         self.token = token or os.environ.get("SANSHAIN_TOKEN")
-        self.headers = {}
+        self.headers: dict[str, str] = {}
         if self.token:
             self.headers["Authorization"] = f"Bearer {self.token}"
         self.verify = not insecure
         # Set once the service refused annotations: later calls send none.
         self.annotations_refused = False
 
-    def get_server_version(self):
+    def get_server_version(self) -> str | None:
         """Return the server's own build version string, or None if unreachable."""
         try:
             response = requests.get(
@@ -255,30 +282,32 @@ class SanshainClient:
             )
             if response.status_code != 200:
                 return None
-            return response.json().get("version")
+            version: str | None = response.json().get("version")
+            return version
         except (requests.RequestException, ValueError, AttributeError):
             return None
 
-    def _diagnose_wrong_server(self):
+    def _diagnose_wrong_server(self) -> str | None:
         version = self.get_server_version()
         if version and _is_pre_2(version):
             return (
-                f"Sanshain server at {self.url} is {version}; this client requires Sanshain 2.x — upgrade the server."
+                f"Sanshain server at {self.url} is {version}; "
+                "this client requires Sanshain 2.x — upgrade the server."
             )
         return None
 
-    def _report_warnings(self, response):
+    def _report_warnings(self, response: requests.Response) -> list[str]:
         lines = warning_lines(response)
         if self.on_warning:
             for line in lines:
                 self.on_warning(line)
         return lines
 
-    def _check_strict(self, warnings, error=None):
+    def _check_strict(self, warnings: list[str], error: Exception | None = None) -> None:
         if self.strict and warnings:
             raise StrictError(f"strict: Sanshain warned: {warnings[0]}", error)
 
-    def _warned_call(self, response, finish):
+    def _warned_call(self, response: requests.Response, finish: Callable[[requests.Response], _T]) -> _T:
         """Print the response's warnings, then `finish(response)`. Under
         strict a warning fails the call afterwards, also when it failed."""
         warnings = self._report_warnings(response)
@@ -290,7 +319,9 @@ class SanshainClient:
         self._check_strict(warnings)
         return result
 
-    def _handle_response(self, response, producer_name=None):
+    def _handle_response(
+        self, response: requests.Response, producer_name: str | None = None
+    ) -> requests.Response:
         if 200 <= response.status_code < 300:
             return response
 
@@ -349,7 +380,9 @@ class SanshainClient:
 
         raise SanshainError(f"Request failed with status {status}: {sanitized_body}")
 
-    def _annotations_to_send(self, annotations, provide):
+    def _annotations_to_send(
+        self, annotations: _Annotations | None, provide: bool
+    ) -> list[Mapping[str, Any]]:
         """What a call may send of the annotations: all of them on a provide,
         only the system ones on any other call (the service refuses a version
         one there), and none once the service refused them."""
@@ -359,13 +392,15 @@ class SanshainClient:
             return list(annotations)
         return [a for a in annotations if a.get("scope") == "system"]
 
-    def _with_annotations(self, payload, annotations, provide):
+    def _with_annotations(
+        self, payload: dict[str, Any], annotations: _Annotations | None, provide: bool
+    ) -> dict[str, Any]:
         send = self._annotations_to_send(annotations, provide)
         if send:
             payload["annotations"] = send
         return payload
 
-    def _refused_annotations(self, response, sent, status):
+    def _refused_annotations(self, response: requests.Response, sent: object, status: int) -> bool:
         """Whether a call that sent annotations was refused by an older
         service naming them, with the given status. From then on this client
         sends none; the first refusal prints the warning, a plain log line
@@ -378,7 +413,7 @@ class SanshainClient:
         return True
 
     @staticmethod
-    def _apply_stream(payload, trunk, tag):
+    def _apply_stream(payload: dict[str, Any], trunk: bool, tag: str | None) -> dict[str, Any]:
         # Absent fields rather than false/null: the server defaults them and
         # rejects unknown shapes.
         if trunk:
@@ -387,7 +422,16 @@ class SanshainClient:
             payload["tag"] = tag
         return payload
 
-    def provide(self, producer_name, openapi_yaml, stability, trunk=False, tag=None, origin=None, annotations=None):
+    def provide(
+        self,
+        producer_name: str,
+        openapi_yaml: str,
+        stability: str,
+        trunk: bool = False,
+        tag: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        annotations: _Annotations | None = None,
+    ) -> Any:
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -402,8 +446,15 @@ class SanshainClient:
         return self._post_provide("/provide", payload, producer_name)
 
     def provide_asyncapi(
-        self, producer_name, asyncapi_yaml, stability, trunk=False, tag=None, origin=None, annotations=None
-    ):
+        self,
+        producer_name: str,
+        asyncapi_yaml: str,
+        stability: str,
+        trunk: bool = False,
+        tag: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        annotations: _Annotations | None = None,
+    ) -> Any:
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -418,8 +469,15 @@ class SanshainClient:
         return self._post_provide("/provide/asyncapi", payload, producer_name)
 
     def provide_proto(
-        self, producer_name, proto_content, stability, trunk=False, tag=None, origin=None, annotations=None
-    ):
+        self,
+        producer_name: str,
+        proto_content: str,
+        stability: str,
+        trunk: bool = False,
+        tag: str | None = None,
+        origin: Mapping[str, Any] | None = None,
+        annotations: _Annotations | None = None,
+    ) -> Any:
         payload = self._apply_stream(
             {
                 "producername": producer_name,
@@ -433,7 +491,7 @@ class SanshainClient:
         self._with_annotations(payload, annotations, provide=True)
         return self._post_provide("/provide/grpc", payload, producer_name)
 
-    def retire(self, producer_name, api_type=None, dry_run=False):
+    def retire(self, producer_name: str, api_type: str | None = None, dry_run: bool = False) -> Any:
         """Declare that this Producer no longer provides an API family.
 
         An ordinary provide call for that family carrying `retired: true` and
@@ -448,13 +506,13 @@ class SanshainClient:
             path = "/provide/asyncapi"
         elif api_type in ("proto", "grpc"):
             path = "/provide/grpc"
-        payload = {"producername": producer_name, "retired": True}
+        payload: dict[str, Any] = {"producername": producer_name, "retired": True}
         if dry_run:
             payload["dry_run"] = True
         return self._post_provide(path, payload, producer_name)
 
-    def _post_provide(self, path, payload, producer_name):
-        def post(body):
+    def _post_provide(self, path: str, payload: dict[str, Any], producer_name: str) -> Any:
+        def post(body: dict[str, Any]) -> requests.Response:
             return requests.post(
                 f"{self.url}{path}", json=body, headers=self.headers, verify=self.verify, timeout=HTTP_TIMEOUT
             )
@@ -480,7 +538,7 @@ class SanshainClient:
                 break
             response = post(payload)
 
-        def finish(response):
+        def finish(response: requests.Response) -> Any:
             self._handle_response(response, producer_name)
             try:
                 return response.json()
@@ -489,7 +547,7 @@ class SanshainClient:
 
         return self._warned_call(response, finish)
 
-    def _check_format(self, response, fmt):
+    def _check_format(self, response: requests.Response, fmt: str | None) -> None:
         """With format: openapi the answer must be an OpenAPI document; an
         older service ignores the parameter and answers AsyncAPI."""
         if not fmt:
@@ -503,11 +561,11 @@ class SanshainClient:
         self._raise_format_needs_2_4(fmt, self.get_server_version())
 
     @staticmethod
-    def _raise_format_needs_2_4(fmt, version):
+    def _raise_format_needs_2_4(fmt: str, version: str | None) -> NoReturn:
         server = f"server is {version}" if version else "server version unknown"
         raise SanshainError(f"format: {fmt} needs Sanshain Service 2.4.0 or later ({server})")
 
-    def _check_format_rejected(self, response, fmt):
+    def _check_format_rejected(self, response: requests.Response, fmt: str | None) -> None:
         """A service older than 2.4.0 rejects the unknown `format` query
         parameter with 400; name that instead of the raw 400. A 2.4.0+
         service's own 400 passes through unchanged."""
@@ -518,7 +576,9 @@ class SanshainClient:
         if parsed is None or parsed < (2, 4, 0):
             self._raise_format_needs_2_4(fmt, version)
 
-    def _finish_require(self, response, producer_name, fmt):
+    def _finish_require(
+        self, response: requests.Response, producer_name: str, fmt: str | None
+    ) -> dict[str, Any]:
         if response.status_code == 304:
             return {"not_modified": True, "content": None, "etag": None}
         self._check_format_rejected(response, fmt)
@@ -526,21 +586,26 @@ class SanshainClient:
         self._check_format(response, fmt)
         response_etag = response.headers.get("ETag")
         # `body` is the answer byte for byte; it is what gets written to disk.
-        return {"not_modified": False, "content": response.text, "body": response.content, "etag": response_etag}
+        return {
+            "not_modified": False,
+            "content": response.text,
+            "body": response.content,
+            "etag": response_etag,
+        }
 
     def require_bundle(
         self,
-        consumer_name,
-        producer_name,
-        version,
-        endpoints,
-        api_type=None,
-        etag=None,
-        trunk=False,
-        tag=None,
-        fmt=None,
-        annotations=None,
-    ):
+        consumer_name: str,
+        producer_name: str,
+        version: str,
+        endpoints: Sequence[Mapping[str, Any]],
+        api_type: str | None = None,
+        etag: str | None = None,
+        trunk: bool = False,
+        tag: str | None = None,
+        fmt: str | None = None,
+        annotations: _Annotations | None = None,
+    ) -> dict[str, Any]:
         # The bundle endpoint reads the stream from the body — its handler has
         # no query extractor, so query parameters would be silently dropped and
         # a trunk build would record no trunk pins.
@@ -563,7 +628,7 @@ class SanshainClient:
         if etag:
             headers["If-None-Match"] = etag
 
-        def post(body):
+        def post(body: dict[str, Any]) -> requests.Response:
             return requests.post(
                 f"{self.url}/require-bundle",
                 json=body,
@@ -582,18 +647,18 @@ class SanshainClient:
 
     def require(
         self,
-        consumer_name,
-        producer_name,
-        version,
-        path,
-        method,
-        api_type=None,
-        etag=None,
-        trunk=False,
-        tag=None,
-        fmt=None,
-        annotations=None,
-    ):
+        consumer_name: str,
+        producer_name: str,
+        version: str,
+        path: str,
+        method: str,
+        api_type: str | None = None,
+        etag: str | None = None,
+        trunk: bool = False,
+        tag: str | None = None,
+        fmt: str | None = None,
+        annotations: _Annotations | None = None,
+    ) -> dict[str, Any]:
         # Unlike the bundle, the single-endpoint require reads its stream from
         # the query string — and its annotations, as a JSON array.
         params = self._apply_stream(
@@ -628,10 +693,19 @@ class SanshainClient:
         # among the fields it expects.
         if self._refused_annotations(response, sent, 400):
             params = {k: v for k, v in params.items() if k != "annotations"}
-            response = requests.get(url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT)
+            response = requests.get(
+                url, params=params, headers=headers, verify=self.verify, timeout=HTTP_TIMEOUT
+            )
         return self._warned_call(response, lambda r: self._finish_require(r, producer_name, fmt))
 
-    def push_catalog(self, system_name, catalog_info_yaml, trunk=False, file_label="catalogInfo", annotations=None):
+    def push_catalog(
+        self,
+        system_name: str,
+        catalog_info_yaml: str,
+        trunk: bool = False,
+        file_label: str = "catalogInfo",
+        annotations: _Annotations | None = None,
+    ) -> dict[str, Any]:
         """Record the system's periphery from its Backstage catalog-info.yaml (PUT /catalog/<system>).
 
         Carries `trunk: true` only for a trunk build and never a tag: the
@@ -642,12 +716,12 @@ class SanshainClient:
         A file Sanshain cannot read is no failure: the answer is a 200 with
         `recorded: false` and the reason in a Sanshain-Warning header.
         """
-        payload = {"catalog_info_yaml": catalog_info_yaml}
+        payload: dict[str, Any] = {"catalog_info_yaml": catalog_info_yaml}
         if trunk:
             payload["trunk"] = True
         self._with_annotations(payload, annotations, provide=False)
 
-        def put(body):
+        def put(body: dict[str, Any]) -> requests.Response:
             return requests.put(
                 f"{self.url}/catalog/{quote(system_name, safe='')}",
                 json=body,

@@ -8,43 +8,43 @@ from unittest import mock
 
 import yaml
 
-from sanshainconan.cli import main, resolve_stability, format_version_conflict
-from sanshainconan.client import VersionConflictError
+from sanshainconan.cli import format_version_conflict, main
+from sanshainconan.client import VersionConflictError, resolve_stability
 
 
 class TestResolveStability(unittest.TestCase):
-    def test_default_is_snapshot(self):
+    def test_default_is_snapshot(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(resolve_stability(), "snapshot")
 
-    def test_env_switch_sets_ga(self):
+    def test_env_switch_sets_ga(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_GA": "true"}, clear=True):
             self.assertEqual(resolve_stability(), "ga")
 
-    def test_env_false_stays_snapshot(self):
+    def test_env_false_stays_snapshot(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_GA": "false"}, clear=True):
             self.assertEqual(resolve_stability(), "snapshot")
 
-    def test_flag_sets_ga_without_env(self):
+    def test_flag_sets_ga_without_env(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(resolve_stability(ga_flag=True), "ga")
 
 
 class TestFormatVersionConflict(unittest.TestCase):
-    def test_openapi_points_at_info_version(self):
+    def test_openapi_points_at_info_version(self) -> None:
         error = VersionConflictError("GA 1.2.0 is immutable", "1.3.0")
         out = format_version_conflict(error, "specs/openapi.yaml", "openapi")
         self.assertIn("GA 1.2.0 is immutable", out)
         self.assertIn("Publish as 1.3.0 — update info.version in specs/openapi.yaml", out)
 
-    def test_proto_points_at_version_marker(self):
+    def test_proto_points_at_version_marker(self) -> None:
         error = VersionConflictError("GA 2.0.0 is immutable", "2.1.0")
         out = format_version_conflict(error, "specs/service.proto", "proto")
         self.assertIn("Publish as 2.1.0 — update the // sanshain-version: marker in specs/service.proto", out)
 
 
 class TestCliProvide(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp()
         self.config_file = os.path.join(self.test_dir, "sanshain.yaml")
         with open(self.config_file, "w") as f:
@@ -59,10 +59,10 @@ class TestCliProvide(unittest.TestCase):
         with open(os.path.join(self.test_dir, "api.yaml"), "w") as f:
             f.write("openapi: 3.0.0\ninfo:\n  version: 1.2.0\n")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.test_dir)
 
-    def _run(self, argv, client):
+    def _run(self, argv: list[str], client: mock.Mock) -> str:
         with mock.patch("sanshainconan.cli.SanshainClient", return_value=client):
             with mock.patch("sys.argv", ["sanshainconan"] + argv):
                 out = io.StringIO()
@@ -70,7 +70,7 @@ class TestCliProvide(unittest.TestCase):
                     main()
         return out.getvalue()
 
-    def test_provide_defaults_to_snapshot(self):
+    def test_provide_defaults_to_snapshot(self) -> None:
         client = mock.Mock()
         client.provide.return_value = {"version": "1.2.0", "stability": "snapshot", "changes": {}}
 
@@ -82,7 +82,7 @@ class TestCliProvide(unittest.TestCase):
         self.assertEqual(args[2], "snapshot")
         self.assertIn("Provided 1.2.0 (snapshot)", out)
 
-    def test_provide_ga_flag_wins_over_default(self):
+    def test_provide_ga_flag_wins_over_default(self) -> None:
         client = mock.Mock()
         client.provide.return_value = {"version": "1.2.0", "stability": "ga", "changes": {}}
 
@@ -92,7 +92,7 @@ class TestCliProvide(unittest.TestCase):
         args, _ = client.provide.call_args
         self.assertEqual(args[2], "ga")
 
-    def test_provide_env_switch_sets_ga(self):
+    def test_provide_env_switch_sets_ga(self) -> None:
         client = mock.Mock()
         client.provide.return_value = {"version": "1.2.0", "stability": "ga", "changes": {}}
 
@@ -102,7 +102,7 @@ class TestCliProvide(unittest.TestCase):
         args, _ = client.provide.call_args
         self.assertEqual(args[2], "ga")
 
-    def test_provide_409_surfaces_proposed_version_and_exits(self):
+    def test_provide_409_surfaces_proposed_version_and_exits(self) -> None:
         client = mock.Mock()
         client.provide.side_effect = VersionConflictError("GA 1.2.0 is immutable", "1.3.0")
 
@@ -121,7 +121,7 @@ class TestCliProvide(unittest.TestCase):
 
 
 class TestCliRequire(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp()
         self.config_file = os.path.join(self.test_dir, "sanshain.yaml")
         with open(self.config_file, "w") as f:
@@ -143,11 +143,11 @@ class TestCliRequire(unittest.TestCase):
         self.cwd = os.getcwd()
         os.chdir(self.test_dir)  # keep the .sanshain-cache inside the temp dir
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         os.chdir(self.cwd)
         shutil.rmtree(self.test_dir)
 
-    def test_require_passes_pinned_version(self):
+    def test_require_passes_pinned_version(self) -> None:
         client = mock.Mock()
         client.require.return_value = {
             "not_modified": False,

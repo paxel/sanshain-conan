@@ -1,12 +1,22 @@
 """The catalog step shared by the CLI and the Conan helper: push catalog-info.yaml to Sanshain."""
 
 import os
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
-from .client import SanshainError
-from .config import ConfigError
+from .client import SanshainClient, SanshainError
+from .config import ConfigError, SanshainConfig
 
 
-def run_catalog(config, client, base_path, trunk, info, warn, annotations=None):
+def run_catalog(
+    config: SanshainConfig,
+    client: SanshainClient,
+    base_path: str,
+    trunk: bool,
+    info: Callable[[str], object],
+    warn: Callable[[str], object],
+    annotations: Sequence[Mapping[str, Any]] | None = None,
+) -> None:
     """Push the file named by `catalogInfo` for this build's stream, with the
     filled annotations (the client sends only the system ones).
 
@@ -28,18 +38,22 @@ def run_catalog(config, client, base_path, trunk, info, warn, annotations=None):
 
     path = os.path.join(base_path, config.catalog_info)
     try:
-        with open(path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
+        with open(path, encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
             content = f.read()
     except OSError as e:
-        raise SanshainError(f"Cannot read catalogInfo file {path}: {e.strerror or e}")
+        raise SanshainError(f"Cannot read catalogInfo file {path}: {e.strerror or e}") from e
 
     response = (
-        client.push_catalog(config.service_name, content, trunk=trunk, file_label=path, annotations=annotations) or {}
+        client.push_catalog(
+            config.service_name, content, trunk=trunk, file_label=path, annotations=annotations
+        )
+        or {}
     )
     if response.get("recorded", True) is False:
         return  # the client already warned why
     resources = response.get("resources") or []
     graphs = "main+dev" if response.get("trunk", trunk) else "dev"
-    info(f"Catalog recorded for {response.get('system', config.service_name)} ({graphs}): {len(resources)} resources")
+    system = response.get("system", config.service_name)
+    info(f"Catalog recorded for {system} ({graphs}): {len(resources)} resources")
     for resource in resources:
         info(f"  {resource}")

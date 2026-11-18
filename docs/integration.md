@@ -22,6 +22,7 @@ from a Conan remote, and the package ships on PyPI instead.
 from conan import ConanFile
 from sanshainconan import Sanshain
 
+
 class MyProject(ConanFile):
     def generate(self):
         # Initialize the helper

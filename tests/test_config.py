@@ -1,22 +1,25 @@
 import os
-import unittest
-import yaml
-import tempfile
 import shutil
-from sanshainconan.config import load_config, ConfigError, SanshainConfig
+import tempfile
+import unittest
+from typing import Any
+
+import yaml
+
+from sanshainconan.config import ConfigError, SanshainConfig, load_config
 
 
 class TestSanshainConfig(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp()
 
-    def _write(self, data):
+    def _write(self, data: dict[str, Any]) -> str:
         config_file = os.path.join(self.test_dir, "sanshain.yaml")
         with open(config_file, "w") as f:
             yaml.dump(data, f)
         return config_file
 
-    def _valid_data(self):
+    def _valid_data(self) -> dict[str, Any]:
         return {
             "sanshainUrl": "http://localhost:8080",
             "serviceName": "test-service",
@@ -31,10 +34,10 @@ class TestSanshainConfig(unittest.TestCase):
             ],
         }
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.test_dir)
 
-    def test_load_config_valid(self):
+    def test_load_config_valid(self) -> None:
         config_file = self._write(self._valid_data())
 
         config = load_config(config_file)
@@ -44,17 +47,17 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertEqual(len(config.requires), 1)
         self.assertEqual(config.requires[0]["version"], "1.2.0")
 
-    def test_load_config_missing_required(self):
+    def test_load_config_missing_required(self) -> None:
         config_file = self._write({"serviceName": "x"})  # missing sanshainUrl
 
         with self.assertRaisesRegex(ConfigError, "Missing required field: sanshainUrl"):
             load_config(config_file)
 
-    def test_load_config_not_found(self):
+    def test_load_config_not_found(self) -> None:
         with self.assertRaisesRegex(ConfigError, "Config file not found"):
             load_config("nonexistent.yaml")
 
-    def test_a_file_without_a_mapping_of_settings_is_a_config_error_naming_it(self):
+    def test_a_file_without_a_mapping_of_settings_is_a_config_error_naming_it(self) -> None:
         config_file = os.path.join(self.test_dir, "sanshain.yaml")
         for text in ("just a string\n", "- sanshainUrl: http://localhost:8080\n", "42\n"):
             with self.subTest(text=text):
@@ -63,10 +66,11 @@ class TestSanshainConfig(unittest.TestCase):
                 with self.assertRaises(ConfigError) as ctx:
                     load_config(config_file)
                 self.assertEqual(
-                    str(ctx.exception), f"{config_file} must be a mapping of settings, such as sanshainUrl: <url>"
+                    str(ctx.exception),
+                    f"{config_file} must be a mapping of settings, such as sanshainUrl: <url>",
                 )
 
-    def test_require_missing_version_names_entry_and_hints_migration(self):
+    def test_require_missing_version_names_entry_and_hints_migration(self) -> None:
         data = self._valid_data()
         del data["requires"][0]["version"]
         config_file = self._write(data)
@@ -79,7 +83,7 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("Sanshain 2.0 pins exact versions", msg)
         self.assertIn("GET /producers/other-service/versions", msg)
 
-    def test_unknown_require_api_type_is_a_config_error(self):
+    def test_unknown_require_api_type_is_a_config_error(self) -> None:
         data = self._valid_data()
         data["requires"][0]["apiType"] = "graphql"
         config_file = self._write(data)
@@ -93,14 +97,14 @@ class TestSanshainConfig(unittest.TestCase):
             "(grpc means proto)",
         )
 
-    def test_every_provide_api_type_spelling_is_taken_on_a_require(self):
+    def test_every_provide_api_type_spelling_is_taken_on_a_require(self) -> None:
         for api_type in ("openapi", "asyncapi", "proto", "grpc"):
             with self.subTest(api_type=api_type):
                 data = self._valid_data()
                 data["requires"][0]["apiType"] = api_type
                 self.assertEqual(load_config(self._write(data)).requires[0]["apiType"], api_type)
 
-    def test_require_branch_is_rejected_by_name(self):
+    def test_require_branch_is_rejected_by_name(self) -> None:
         data = self._valid_data()
         data["requires"][0]["branch"] = "main"
         config_file = self._write(data)
@@ -114,7 +118,7 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("branch model was removed in Sanshain 2.0", msg)
         self.assertIn("'version' pin", msg)
 
-    def test_require_timeout_is_rejected_by_name(self):
+    def test_require_timeout_is_rejected_by_name(self) -> None:
         data = self._valid_data()
         data["requires"][0]["timeout"] = 60
         config_file = self._write(data)
@@ -126,7 +130,7 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("requires[0] (other-service): 'timeout' is no longer supported", msg)
         self.assertIn("no long-polling", msg)
 
-    def test_top_level_timeout_is_rejected_by_name(self):
+    def test_top_level_timeout_is_rejected_by_name(self) -> None:
         data = self._valid_data()
         data["timeout"] = 30
         config_file = self._write(data)
@@ -134,7 +138,7 @@ class TestSanshainConfig(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, r"sanshain\.yaml: 'timeout' is no longer supported"):
             load_config(config_file)
 
-    def test_provide_branch_is_rejected_with_spec_file_hint(self):
+    def test_provide_branch_is_rejected_with_spec_file_hint(self) -> None:
         data = self._valid_data()
         data["provide"]["branch"] = "release/1.x"
         config_file = self._write(data)
@@ -147,7 +151,7 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("info.version", msg)
         self.assertIn("sanshain-version", msg)
 
-    def test_provide_base_version_is_rejected_by_name(self):
+    def test_provide_base_version_is_rejected_by_name(self) -> None:
         data = self._valid_data()
         data["provides"] = [{"file": "api.yaml", "baseVersion": 5}]
         config_file = self._write(data)
@@ -159,7 +163,7 @@ class TestSanshainConfig(unittest.TestCase):
         self.assertIn("provides[0]: 'baseVersion' is no longer supported", msg)
         self.assertIn("GA immutability", msg)
 
-    def test_release_branches_is_rejected_by_name(self):
+    def test_release_branches_is_rejected_by_name(self) -> None:
         data = self._valid_data()
         data["releaseBranches"] = ["main", "release/*"]
         config_file = self._write(data)
@@ -173,7 +177,7 @@ class TestSanshainConfig(unittest.TestCase):
 
 
 class TestRetiredEntries(unittest.TestCase):
-    def test_a_retired_entry_needs_no_file(self):
+    def test_a_retired_entry_needs_no_file(self) -> None:
         # The project no longer provides the family, so demanding a spec file
         # would force a dead file to stay on disk forever.
         config = SanshainConfig(

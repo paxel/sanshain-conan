@@ -1,0 +1,12 @@
+# The strict ruff config of the paxel/gates standard (configs/python/ruff.toml): pycodestyle,
+# pyflakes, isort, bugbear, the bandit security rules and pyupgrade. No target version here:
+# ruff takes it from `requires-python` in pyproject.toml, so pyupgrade never asks for syntax
+# Python 3.11 lacks.
+line-length = 110
+
+[lint]
+select = ["E", "F", "W", "I", "B", "S", "UP"]
+
+[lint.per-file-ignores]
+# Tests assert with assert and write temporary files; that is what they are for.
+"tests/**" = ["S101", "S108"]

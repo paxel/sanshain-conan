@@ -27,12 +27,12 @@ REQUIRES = """requires:
 """
 
 
-def cat(text):
+def cat(text: str) -> str:
     return f"   /\\_/\\  ?\n  ( O_o )   {text}\n ---U-U---\n"
 
 
 class TestFindUnknownFields(unittest.TestCase):
-    def test_paths_at_every_level_in_file_order(self):
+    def test_paths_at_every_level_in_file_order(self) -> None:
         data = {
             "sanshainUrl": "x",
             "catalogInf": "c.yaml",
@@ -58,7 +58,7 @@ class TestFindUnknownFields(unittest.TestCase):
             ],
         )
 
-    def test_known_but_unsupported_fields_are_not_unknown(self):
+    def test_known_but_unsupported_fields_are_not_unknown(self) -> None:
         data = {
             "sanshainUrl": "x",
             "clientName": "c",
@@ -83,33 +83,36 @@ class TestFindUnknownFields(unittest.TestCase):
         }
         self.assertEqual(find_unknown_fields(data), [])
 
-    def test_the_cat_is_exact(self):
+    def test_the_cat_is_exact(self) -> None:
         self.assertEqual(
             "\n".join(puzzled_cat(["catalogInf"], False)) + "\n",
             cat("sanshain.yaml: unknown field 'catalogInf' - ignored"),
         )
         self.assertEqual(
             puzzled_cat(["catalogInf", "requires[0].verison"], True)[1],
-            "  ( O_o )   sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' - rejected (strict)",
+            "  ( O_o )   sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' "
+            "- rejected (strict)",
         )
 
 
 class CliTestCase(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.config_file = os.path.join(self.folder, "sanshain.yaml")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.folder)
 
-    def write(self, text):
+    def write(self, text: str) -> None:
         with open(self.config_file, "w") as f:
             f.write(text)
 
-    def run_cli(self, *extra, env=None):
+    def run_cli(
+        self, *extra: str, env: dict[str, str] | None = None
+    ) -> tuple[str | int | None, str, str, mock.MagicMock]:
         argv = ["sanshain-conan", "--config", self.config_file, *extra, "require"]
         out, err = io.StringIO(), io.StringIO()
-        code = 0
+        code: str | int | None = 0
         cwd = os.getcwd()
         os.chdir(self.folder)
         try:
@@ -128,7 +131,7 @@ class CliTestCase(unittest.TestCase):
 
 
 class TestCliCat(CliTestCase):
-    def test_single_unknown_field_prints_the_cat_once_and_continues(self):
+    def test_single_unknown_field_prints_the_cat_once_and_continues(self) -> None:
         self.write(BASE + "catalogInf: catalog-info.yaml\n" + REQUIRES)
         code, out, err, client_cls = self.run_cli()
         self.assertEqual(code, 0)
@@ -136,18 +139,22 @@ class TestCliCat(CliTestCase):
         self.assertNotIn("O_o", out)
         client_cls.return_value.require.assert_called_once()
 
-    def test_several_unknown_fields_in_file_order(self):
-        self.write(BASE + "catalogInf: c.yaml\n" + REQUIRES.replace("version:", "verison: 1.0.0\n    version:"))
+    def test_several_unknown_fields_in_file_order(self) -> None:
+        self.write(
+            BASE + "catalogInf: c.yaml\n" + REQUIRES.replace("version:", "verison: 1.0.0\n    version:")
+        )
         code, _, err, _ = self.run_cli()
         self.assertEqual(code, 0)
-        self.assertEqual(err, cat("sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' - ignored"))
+        self.assertEqual(
+            err, cat("sanshain.yaml: unknown fields 'catalogInf', 'requires[0].verison' - ignored")
+        )
 
-    def test_nested_endpoint_path(self):
+    def test_nested_endpoint_path(self) -> None:
         self.write(BASE + REQUIRES + "      - methd: GET\n")
         _, _, err, _ = self.run_cli()
         self.assertIn("unknown field 'requires[0].endpoints[1].methd' - ignored", err)
 
-    def test_strict_rejects_even_with_best_effort(self):
+    def test_strict_rejects_even_with_best_effort(self) -> None:
         self.write(BASE + "strict: true\ncatalogInf: c.yaml\n" + REQUIRES)
         for extra, env in (((), {}), (("--best-effort",), {"SANSHAIN_BEST_EFFORT": "true"})):
             with self.subTest(extra=extra):
@@ -156,7 +163,7 @@ class TestCliCat(CliTestCase):
                 self.assertEqual(err, cat("sanshain.yaml: unknown field 'catalogInf' - rejected (strict)"))
                 client_cls.return_value.require.assert_not_called()
 
-    def test_legacy_field_still_errors_without_a_cat(self):
+    def test_legacy_field_still_errors_without_a_cat(self) -> None:
         self.write(BASE + "timeout: 30\ncatalogInf: c.yaml\n" + REQUIRES)
         code, out, err, _ = self.run_cli()
         self.assertEqual(code, 1)
@@ -164,7 +171,7 @@ class TestCliCat(CliTestCase):
         self.assertNotIn("Traceback", out + err)
         self.assertNotIn("O_o", err + out)
 
-    def test_a_typo_replacing_a_required_field_shows_the_cat_then_the_error(self):
+    def test_a_typo_replacing_a_required_field_shows_the_cat_then_the_error(self) -> None:
         cases = [
             (
                 BASE + "provide:\n  fiel: a.yaml\n",
@@ -191,7 +198,7 @@ class TestCliCat(CliTestCase):
                 self.assertIn(f"Error: {error}", out)
                 client_cls.return_value.require.assert_not_called()
 
-    def test_best_effort_shows_the_cat_then_warns_about_the_broken_config(self):
+    def test_best_effort_shows_the_cat_then_warns_about_the_broken_config(self) -> None:
         self.write(BASE + "provide:\n  fiel: a.yaml\n")
         code, out, err, client_cls = self.run_cli("--best-effort")
         self.assertEqual(code, 0)
@@ -200,14 +207,14 @@ class TestCliCat(CliTestCase):
         self.assertIn("Continuing (best effort)", out)
         client_cls.assert_not_called()
 
-    def test_strict_fails_on_the_unknown_field_before_other_validation(self):
+    def test_strict_fails_on_the_unknown_field_before_other_validation(self) -> None:
         self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))
         code, out, err, _ = self.run_cli()
         self.assertEqual(code, 1)
         self.assertEqual(err, cat("sanshain.yaml: unknown field 'requires[0].verison' - rejected (strict)"))
         self.assertNotIn("missing 'version'", out)
 
-    def test_best_effort_ignores_the_strict_of_a_file_that_does_not_validate(self):
+    def test_best_effort_ignores_the_strict_of_a_file_that_does_not_validate(self) -> None:
         # The file is broken, so its own strict does not count: the cat says
         # ignored, the validation error is the warning, and nothing is called.
         self.write(BASE + "strict: true\n" + REQUIRES.replace("version:", "verison:"))
@@ -220,7 +227,7 @@ class TestCliCat(CliTestCase):
                 self.assertIn("Continuing (best effort)", out)
                 client_cls.assert_not_called()
 
-    def test_known_but_unsupported_field_gives_no_cat(self):
+    def test_known_but_unsupported_field_gives_no_cat(self) -> None:
         self.write(BASE + "insecure: true\nforce: true\ncombine: true\n" + REQUIRES)
         code, out, err, _ = self.run_cli()
         self.assertEqual(code, 0)
@@ -228,23 +235,26 @@ class TestCliCat(CliTestCase):
 
 
 class TestHelperCat(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.conanfile = SimpleNamespace(
-            export_sources_folder=self.folder, recipe_folder=self.folder, source_folder=self.folder, output=mock.Mock()
+            export_sources_folder=self.folder,
+            recipe_folder=self.folder,
+            source_folder=self.folder,
+            output=mock.Mock(),
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.folder)
 
-    def write(self, text):
+    def write(self, text: str) -> None:
         with open(os.path.join(self.folder, "sanshain.yaml"), "w") as f:
             f.write(text)
 
-    def warnings(self):
+    def warnings(self) -> list[str]:
         return [c.args[0] for c in self.conanfile.output.warning.call_args_list]
 
-    def test_warns_with_the_cat_line_by_line(self):
+    def test_warns_with_the_cat_line_by_line(self) -> None:
         self.write(BASE + "provide:\n  fiel: a.yaml\n  file: a.yaml\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             Sanshain(self.conanfile)
@@ -253,37 +263,41 @@ class TestHelperCat(unittest.TestCase):
             puzzled_cat(["provide.fiel"], False),
         )
 
-    def test_strict_raises_after_the_cat(self):
+    def test_strict_raises_after_the_cat(self) -> None:
         self.write(BASE + "strict: true\nprovides:\n  - file: a.yaml\n  - file: b.yaml\n    verison: 1\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ConfigError) as ctx:
                 Sanshain(self.conanfile)
-        self.assertEqual(str(ctx.exception), "sanshain.yaml: unknown field 'provides[1].verison' - rejected (strict)")
+        self.assertEqual(
+            str(ctx.exception), "sanshain.yaml: unknown field 'provides[1].verison' - rejected (strict)"
+        )
         self.assertEqual(self.warnings(), puzzled_cat(["provides[1].verison"], True))
 
-    def test_a_typo_replacing_a_required_field_shows_the_cat_then_raises(self):
+    def test_a_typo_replacing_a_required_field_shows_the_cat_then_raises(self) -> None:
         self.write(BASE + "provide:\n  fiel: a.yaml\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ConfigError, "At least one of file"):
                 Sanshain(self.conanfile)
         self.assertEqual(self.warnings(), puzzled_cat(["provide.fiel"], False))
 
-    def test_strict_raises_on_the_unknown_field_before_other_validation(self):
+    def test_strict_raises_on_the_unknown_field_before_other_validation(self) -> None:
         self.write(BASE + "strict: true\nprovide:\n  fiel: a.yaml\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ConfigError) as ctx:
                 Sanshain(self.conanfile)
-        self.assertEqual(str(ctx.exception), "sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)")
+        self.assertEqual(
+            str(ctx.exception), "sanshain.yaml: unknown field 'provide.fiel' - rejected (strict)"
+        )
         self.assertEqual(self.warnings(), puzzled_cat(["provide.fiel"], True))
 
-    def test_legacy_field_still_errors_without_a_cat(self):
+    def test_legacy_field_still_errors_without_a_cat(self) -> None:
         self.write(BASE + "releaseBranches: [main]\ncatalogInf: c.yaml\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ConfigError, "'releaseBranches' is no longer supported"):
                 Sanshain(self.conanfile)
         self.conanfile.output.warning.assert_not_called()
 
-    def test_known_fields_give_no_cat(self):
+    def test_known_fields_give_no_cat(self) -> None:
         self.write(BASE + "insecure: true\ncatalogInfo: catalog-info.yaml\n")
         with mock.patch.dict(os.environ, {}, clear=True):
             config = load_config(os.path.join(self.folder, "sanshain.yaml"))

@@ -8,6 +8,8 @@ Needs Sanshain Service 2.13.0 or later; the service checks the limits.
 
 import os
 import re
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 SET_ENV_PREFIX = "SANSHAIN_SET_"
 
@@ -16,7 +18,7 @@ SET_ENV_PREFIX = "SANSHAIN_SET_"
 _PLACEHOLDER = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 
 
-def parse_set(arg):
+def parse_set(arg: str) -> tuple[str, str]:
     """One `--set NAME=value`, split at the first `=` so the value may hold more."""
     name, sep, value = arg.partition("=")
     if not sep or not name:
@@ -24,7 +26,26 @@ def parse_set(arg):
     return name, value
 
 
-def fill_annotations(declared, sets=None, env=None, flag_hint=True):
+def _fill(text: str, sets: Mapping[str, str], env: Mapping[str, str]) -> tuple[str, list[str]]:
+    """The text with its placeholders filled, and the names of those left unfilled, in order."""
+    missing: list[str] = []
+
+    def fill(match: re.Match[str]) -> str:
+        name = match.group(1)
+        found = sets[name] if name in sets else env.get(SET_ENV_PREFIX + name, "")
+        if not found:
+            missing.append(name)
+        return found
+
+    return _PLACEHOLDER.sub(fill, text), missing
+
+
+def fill_annotations(
+    declared: Iterable[Mapping[str, Any]] | None,
+    sets: Mapping[str, str] | None = None,
+    env: Mapping[str, str] | None = None,
+    flag_hint: bool = True,
+) -> tuple[list[dict[str, str]], list[str]]:
     """The annotations as they are sent, and a warning per entry left out.
 
     A placeholder takes the `sets` value for its NAME first, else
@@ -37,19 +58,10 @@ def fill_annotations(declared, sets=None, env=None, flag_hint=True):
     """
     sets = sets or {}
     env = os.environ if env is None else env
-    annotations = []
-    warnings = []
+    annotations: list[dict[str, str]] = []
+    warnings: list[str] = []
     for entry in declared or []:
-        missing = []
-
-        def fill(match):
-            name = match.group(1)
-            found = sets[name] if name in sets else env.get(SET_ENV_PREFIX + name, "")
-            if not found:
-                missing.append(name)
-            return found
-
-        value = _PLACEHOLDER.sub(fill, entry["value"])
+        value, missing = _fill(entry["value"], sets, env)
         if missing:
             name = missing[0]
             source = f"--set {name}=… or {SET_ENV_PREFIX}{name}" if flag_hint else f"{SET_ENV_PREFIX}{name}"

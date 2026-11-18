@@ -9,3 +9,11 @@ dist/
 *.egg-info/
 .conan/
 .conan2/
+.venv/
+.mypy_cache/
+.ruff_cache/
+# Coverage output of the local runs and CI; the floor and the badge are committed.
+coverage/
+*.lcov
+coverage.xml
+.coverage

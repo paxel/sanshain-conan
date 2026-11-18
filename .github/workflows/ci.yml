@@ -1,0 +1,62 @@
+name: CI
+
+# sanshain-conan's gates. The standard's part comes from paxel/gates: the OSV gate, the Python
+# gate (ruff format, ruff check, mypy, tests, coverage ratchet) and SonarQube Cloud. The job on
+# the oldest supported Python is the repository's own (docs/adr/0001-move-to-gates.md).
+# A branch gets its run through its pull request; a run per push as well would be the same
+# jobs twice, and SonarQube Cloud analyses only the default branch and pull requests.
+on:
+  push:
+    branches: [summer]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Known vulnerabilities and licences of every dependency: osv-scanner decided by gates'
+  # osv_gate.py. What is accepted stands in osv-scanner.toml.
+  vulns:
+    uses: paxel/gates/.github/workflows/vulns.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+
+  # On the Python .python-version pins.
+  python:
+    uses: paxel/gates/.github/workflows/python.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+
+  # `requires-python` in pyproject.toml promises this floor, so the package is tested and
+  # built on it, not just declared. Keep in sync with that line.
+  oldest:
+    name: Oldest Python (3.11)
+    runs-on: ubuntu-24.04
+    env:
+      # Named explicitly: .python-version would otherwise pick the pinned release.
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.11"
+      # Only the locked versions, only wheels: no dependency is built from its source archive,
+      # which would run its setup code here. The project itself is the one exception.
+      - name: Install dependencies
+        run: uv sync --locked --no-build --no-binary-package sanshain-conan --all-extras --dev
+      - name: Tests
+        run: |
+          uv run --locked --no-build --no-binary-package sanshain-conan python --version
+          uv run --locked --no-build --no-binary-package sanshain-conan pytest
+      # The package ships on PyPI; building the wheel and the source distribution is the
+      # packaging check.
+      - name: Build sdist and wheel
+        run: uv build
+
+  sonar:
+    needs: python
+    uses: paxel/gates/.github/workflows/sonar.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+    secrets:
+      sonar-token: ${{ secrets.SQ_TOKEN }}

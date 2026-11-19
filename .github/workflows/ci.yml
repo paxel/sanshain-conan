@@ -21,11 +21,11 @@ jobs:
   # Known vulnerabilities and licences of every dependency: osv-scanner decided by gates'
   # osv_gate.py. What is accepted stands in osv-scanner.toml.
   vulns:
-    uses: paxel/gates/.github/workflows/vulns.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+    uses: paxel/gates/.github/workflows/vulns.yml@66ed2d3a448a5f6bfa1794809b330eb9fbee01ba # v1.2.0
 
   # On the Python .python-version pins.
   python:
-    uses: paxel/gates/.github/workflows/python.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+    uses: paxel/gates/.github/workflows/python.yml@66ed2d3a448a5f6bfa1794809b330eb9fbee01ba # v1.2.0
 
   # `requires-python` in pyproject.toml promises this floor, so the package is tested and
   # built on it, not just declared. Keep in sync with that line.
@@ -57,6 +57,6 @@ jobs:
 
   sonar:
     needs: python
-    uses: paxel/gates/.github/workflows/sonar.yml@e5e253a7caff277f039fb31a3e6be1479682dcc4 # v1.2.0
+    uses: paxel/gates/.github/workflows/sonar.yml@66ed2d3a448a5f6bfa1794809b330eb9fbee01ba # v1.2.0
     secrets:
       sonar-token: ${{ secrets.SQ_TOKEN }}

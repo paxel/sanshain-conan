@@ -1,6 +1,8 @@
 """The 2.2 surface: streams, retire, harvested subscriptions, line endings."""
 
 import unittest
+from collections.abc import Callable
+from typing import Any
 from unittest import mock
 
 from sanshainconan.client import (
@@ -13,7 +15,9 @@ from sanshainconan.client import (
 )
 
 
-def make_response(status_code=200, json_data=None, text="", headers=None):
+def make_response(
+    status_code: int = 200, json_data: Any = None, text: str = "", headers: dict[str, str] | None = None
+) -> mock.Mock:
     resp = mock.Mock()
     resp.status_code = status_code
     resp.text = text
@@ -34,33 +38,35 @@ PROVIDE_OK = {
 
 
 class TestResolveStream(unittest.TestCase):
-    def test_defaults_to_no_stream(self):
+    def test_defaults_to_no_stream(self) -> None:
         with mock.patch.dict("os.environ", {}, clear=True):
             self.assertEqual(resolve_stream(), (False, None))
 
-    def test_reads_the_environment(self):
+    def test_reads_the_environment(self) -> None:
         with mock.patch.dict("os.environ", {"SANSHAIN_TRUNK": "true"}, clear=True):
             self.assertEqual(resolve_stream(), (True, None))
         with mock.patch.dict("os.environ", {"SANSHAIN_TAG": "R"}, clear=True):
             self.assertEqual(resolve_stream(), (False, "R"))
 
-    def test_the_flag_beats_the_environment(self):
+    def test_the_flag_beats_the_environment(self) -> None:
         with mock.patch.dict("os.environ", {"SANSHAIN_TAG": "from-env"}, clear=True):
             self.assertEqual(resolve_stream(tag="from-flag"), (False, "from-flag"))
 
-    def test_trunk_and_tag_together_warn_and_declare_neither(self):
+    def test_trunk_and_tag_together_warn_and_declare_neither(self) -> None:
         # The graph never fails a build: both declared is a warning, and the
         # build is recorded in neither stream.
-        warned = []
+        warned: list[str] = []
         with mock.patch.dict("os.environ", {}, clear=True):
             self.assertEqual(resolve_stream(trunk_flag=True, tag="R", warn=warned.append), (False, None))
         with mock.patch.dict("os.environ", {"SANSHAIN_TAG": "R"}, clear=True):
             self.assertEqual(resolve_stream(trunk_flag=True, warn=warned.append), (False, None))
         self.assertEqual(warned, [BOTH_STREAMS] * 2)
-        self.assertEqual(BOTH_STREAMS, "trunk and tag are mutually exclusive - this build is recorded in neither")
+        self.assertEqual(
+            BOTH_STREAMS, "trunk and tag are mutually exclusive - this build is recorded in neither"
+        )
 
-    def test_trunk_and_tag_together_under_strict_fail(self):
-        warned = []
+    def test_trunk_and_tag_together_under_strict_fail(self) -> None:
+        warned: list[str] = []
         with mock.patch.dict("os.environ", {}, clear=True):
             with self.assertRaises(StrictError) as ctx:
                 resolve_stream(trunk_flag=True, tag="R", strict=True, warn=warned.append)
@@ -69,7 +75,7 @@ class TestResolveStream(unittest.TestCase):
 
 class TestStreamsOnTheWire(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_provide_carries_the_declared_stream(self, mock_post):
+    def test_provide_carries_the_declared_stream(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
         client = SanshainClient("http://localhost:8080")
 
@@ -86,7 +92,7 @@ class TestStreamsOnTheWire(unittest.TestCase):
         self.assertNotIn("tag", payload)
 
     @mock.patch("requests.get")
-    def test_single_require_carries_the_stream_in_the_query(self, mock_get):
+    def test_single_require_carries_the_stream_in_the_query(self, mock_get: mock.MagicMock) -> None:
         mock_get.return_value = make_response(200, text="paths: {}")
         client = SanshainClient("http://localhost:8080")
 
@@ -97,7 +103,7 @@ class TestStreamsOnTheWire(unittest.TestCase):
         self.assertEqual(mock_get.call_args[1]["params"].get("tag"), "R")
 
     @mock.patch("requests.post")
-    def test_bundle_carries_the_stream_in_the_body(self, mock_post):
+    def test_bundle_carries_the_stream_in_the_body(self, mock_post: mock.MagicMock) -> None:
         # The bundle endpoint reads the stream from the body — its handler has
         # no query extractor, so query parameters would be silently dropped and
         # a trunk build would record no trunk pins.
@@ -119,7 +125,7 @@ class TestStreamsOnTheWire(unittest.TestCase):
 
 class TestRetire(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_retire_sends_retired_with_no_document(self, mock_post):
+    def test_retire_sends_retired_with_no_document(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(
             202, {"tag_cleared": "messaging", "trunk_pins_closed": 2, "contracts_released": 1}
         )
@@ -133,7 +139,7 @@ class TestRetire(unittest.TestCase):
         self.assertEqual(shed["tag_cleared"], "messaging")
 
     @mock.patch("requests.post")
-    def test_retire_dry_run_is_sent_as_such(self, mock_post):
+    def test_retire_dry_run_is_sent_as_such(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, {"trunk_pins_closed": 0, "contracts_released": 0})
         client = SanshainClient("http://localhost:8080")
 
@@ -146,7 +152,9 @@ class TestRetire(unittest.TestCase):
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_forbidden_names_the_role_and_the_maintainer_grant(self, mock_post, mock_get):
+    def test_forbidden_names_the_role_and_the_maintainer_grant(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         # The lazy wrong-server check answers 2.x, keeping the original error.
         mock_get.return_value = make_response(200, {"version": "2.2.0"})
         refusal = "retiring an API family of 'svc' requires the 'releaser' role or a maintainer grant"
@@ -163,7 +171,9 @@ class TestRetire(unittest.TestCase):
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_any_other_forbidden_shows_the_service_message_alone(self, mock_post, mock_get):
+    def test_any_other_forbidden_shows_the_service_message_alone(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         mock_get.return_value = make_response(200, {"version": "2.13.0"})
         refusal = (
             "this API token has scope 'read_only' and may not change the catalog; "
@@ -173,7 +183,11 @@ class TestRetire(unittest.TestCase):
         mock_post.return_value = make_response(403, {"error": refusal}, text=body)
         client = SanshainClient("http://localhost:8080")
 
-        for call in (lambda: client.retire("svc"), lambda: client.provide("svc", "openapi: 3.0.3\n", "snapshot")):
+        calls: tuple[Callable[[], Any], ...] = (
+            lambda: client.retire("svc"),
+            lambda: client.provide("svc", "openapi: 3.0.3\n", "snapshot"),
+        )
+        for call in calls:
             with self.subTest(call=call):
                 with self.assertRaises(SanshainError) as ctx:
                     call()
@@ -181,7 +195,7 @@ class TestRetire(unittest.TestCase):
 
 
 class TestLineEndings(unittest.TestCase):
-    def test_crlf_is_normalized_before_upload(self):
+    def test_crlf_is_normalized_before_upload(self) -> None:
         # Byte-for-byte comparison server-side: a CRLF checkout must hash the
         # same as an LF one, or the same commit conflicts with itself
         # depending on which runner published it.
@@ -190,7 +204,7 @@ class TestLineEndings(unittest.TestCase):
         self.assertIs(normalize_line_endings(lf), lf)
 
     @mock.patch("requests.post")
-    def test_provide_uploads_lf_content(self, mock_post):
+    def test_provide_uploads_lf_content(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
         client = SanshainClient("http://localhost:8080")
 
@@ -202,7 +216,7 @@ class TestLineEndings(unittest.TestCase):
 
 class TestHarvestedSubscriptions(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_the_response_carries_the_harvest_through(self, mock_post):
+    def test_the_response_carries_the_harvest_through(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(
             202,
             dict(

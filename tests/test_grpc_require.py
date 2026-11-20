@@ -18,7 +18,7 @@ PROTO = b'syntax = "proto3";\n'
 
 
 class TestGrpcRequire(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.folder)
         self.cwd = os.getcwd()
@@ -50,13 +50,13 @@ class TestGrpcRequire(unittest.TestCase):
             "etag": None,
         }
 
-    def assert_saved_as_proto(self):
+    def assert_saved_as_proto(self) -> None:
         self.assertEqual(self.client.require.call_args.args[5], "grpc")
         with open(os.path.join(self.folder, "gen", "payments.proto"), "rb") as f:
             self.assertEqual(f.read(), PROTO)
         self.assertFalse(os.path.exists(os.path.join(self.folder, "gen", "payments.yaml")))
 
-    def test_the_cli_saves_it_as_proto(self):
+    def test_the_cli_saves_it_as_proto(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch("sanshainconan.cli.SanshainClient", return_value=self.client):
                 with mock.patch("sys.argv", ["sanshainconan", "--config", self.config_file, "require"]):
@@ -64,8 +64,10 @@ class TestGrpcRequire(unittest.TestCase):
                         main()
         self.assert_saved_as_proto()
 
-    def test_the_helper_saves_it_as_proto(self):
-        conanfile = SimpleNamespace(export_sources_folder=self.folder, recipe_folder=self.folder, output=mock.Mock())
+    def test_the_helper_saves_it_as_proto(self) -> None:
+        conanfile = SimpleNamespace(
+            export_sources_folder=self.folder, recipe_folder=self.folder, output=mock.Mock()
+        )
         with mock.patch.dict(os.environ, {}, clear=True):
             sanshain = Sanshain(conanfile)
         sanshain.client = self.client

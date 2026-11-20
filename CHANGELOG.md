@@ -5,25 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
-## [2.5.0]
+## [2.5.1]
 
 ### Added
-- `autoGa: true` in `sanshain.yaml` makes a provide GA whenever the build declares trunk or a tag (CLI and Conan integration); `SANSHAIN_GA=false` keeps such a build a snapshot.
-- `annotations` in `sanshain.yaml` travel with provide, require, bundle and catalog push, their `{{NAME}}` placeholders filled from `--set NAME=value` or `SANSHAIN_SET_NAME` (needs Sanshain Service 2.13.0 or later).
-
-### Changed
-- A missing or broken `sanshain.yaml` (unreadable, invalid YAML, 1.x fields, failed validation) under `--best-effort` or `SANSHAIN_BEST_EFFORT` prints `Error: <error>` and `Continuing (best effort)` and exits 0 without a call, now without the `Warning loading config:` line and the skip notices that followed it. Such a file's own `bestEffort` does not count, and under best effort a file that does not validate no longer fails over unknown fields because of its own `strict: true`. Without best effort a missing file fails, naming it, as before; the `conanfile.py` helper, which reads only the file's `bestEffort`, always fails on a missing or broken file. The `--best-effort` help says so.
+- The release on GitHub carries the wheel and the source distribution, the files PyPI holds, with a CycloneDX SBOM of the source, a build provenance attestation and its Sigstore bundle; `gh attestation verify <file> -R paxel/sanshain-conan` checks a download. The files on PyPI carry PyPI's own attestations ([sancon-1005](https://github.com/paxel/sanshain-conan/issues/16)). Apart from the fixes below, the command and the `conanfile.py` helper behave as in 2.5.0.
 
 ### Fixed
-- A failed `require()` in the `conanfile.py` helper with `bestEffort: true` now warns `Sanshain: Continuing (best effort)` and goes on; before, it stopped `conan install` with an `AttributeError` (`output.warn` does not exist in Conan 2).
-- A require with `apiType: grpc` is saved as `.proto` (it was `.yaml`) by the CLI and the `conanfile.py` helper, and its bundle sends `api_type: proto`, the spelling the service's contract names.
-- Best effort works the same in provide, require and catalog: a failed provide no longer stops the next `provides` entry, in the CLI and in the `conanfile.py` helper's `provide()`, which softened nothing before.
-- A `403` on provide or retire names the releaser role only when the service refused for want of it; any other `403`, such as a read-only token's, shows the service's message alone.
-- The require ETag cache in `.sanshain-cache/state.json` is kept per output directory: the same endpoint required into two directories is written to both instead of the second getting a `304` and staying empty, and a deleted output file is fetched again instead of being skipped.
-- An unknown `requires[].apiType` fails as a configuration error when `sanshain.yaml` is loaded, before any call; it was sent to `/require` as OpenAPI.
-- A `sanshain.yaml` that holds no mapping of settings (a plain string, a number, a list) fails naming the file, in the CLI and the `conanfile.py` helper; it failed with a Python `AttributeError` such as `'str' object has no attribute 'get'`.
-- `Sanshain(self)` without `config_path` falls back to the recipe's `source_folder` when it has neither an export-sources nor a recipe folder; it named `base_folder`, which Conan 2's `ConanFile` lacks, and failed with an `AttributeError`.
-- The build, release and security workflows pin every action to a full commit SHA; they referenced tags and a branch.
+- An entry of `provides` or `requires` in `sanshain.yaml` that is not a mapping, such as an empty `-`, a `provide` that is not a mapping, and a `provides` or `requires` that is not a list fail as a configuration error naming the place, for example `provides[0]: must be an entry with a file` or `requires must be a list of entries`. They ended in a Python error such as `argument of type 'NoneType' is not iterable`; `load_config` and the `conanfile.py` helper now raise `ConfigError` there. An empty `provides:` or `requires:` holds no entry; it failed the same way ([sancon-1003](https://github.com/paxel/sanshain-conan/issues/14)).
+- A `sanshain.yaml` with a value YAML cannot build, such as the date `2001-99-99`, or nested deeper than Python follows, fails with `Failed to parse YAML: <reason>`, as a `ConfigError`; it failed with the bare reason, such as `month must be in 1..12`, as a `ValueError` or `RecursionError` in the helper. With `format: openapi`, such an answer of the service counts as no OpenAPI document and gets the message for that, and a JSON answer nested deeper than Python follows is read as text ([sancon-1003](https://github.com/paxel/sanshain-conan/issues/14)).
+- A require state file (`.sanshain-cache/state.json`) that is not text or is nested too deeply counts as empty, and an entry in it that is not an ETag record, such as a number, counts as absent: the endpoint is fetched again and the entry rewritten. Before, every require of that endpoint failed until the file was deleted ([sancon-1003](https://github.com/paxel/sanshain-conan/issues/14)).
 
 ---
 

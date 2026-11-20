@@ -21,6 +21,8 @@ true` there may make a provide GA on a build that declares a stream, unless
 """
 
 import os
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from .annotations import fill_annotations
 from .catalog import run_catalog
@@ -35,9 +37,11 @@ from .client import (
 )
 from .config import ConfigError, load_config, puzzled_cat
 
+_T = TypeVar("_T")
+
 
 class Sanshain:
-    def __init__(self, conanfile, config_path=None):
+    def __init__(self, conanfile: Any, config_path: str | os.PathLike[str] | None = None) -> None:
         self.conanfile = conanfile
         # Without an explicit config_path, sanshain.yaml is expected in the
         # project root: the export-sources folder, else the recipe folder, else
@@ -63,7 +67,9 @@ class Sanshain:
             for line in puzzled_cat(self.config.unknown_fields, False):
                 conanfile.output.warning(line)
         # Every Sanshain-Warning header is a warning; under strict it fails the call.
-        self.client = SanshainClient(self.config.sanshain_url, on_warning=self._warn, strict=self.config.strict)
+        self.client = SanshainClient(
+            self.config.sanshain_url, on_warning=self._warn, strict=self.config.strict
+        )
         # Why this build provides: build and change URL from the runner,
         # tickets and note from SANSHAIN_TICKETS / SANSHAIN_NOTE.
         self.origin = resolve_origin()
@@ -86,10 +92,10 @@ class Sanshain:
             conanfile.output.error(f"Sanshain: {error}")
             raise error
 
-    def _warn(self, text):
+    def _warn(self, text: str) -> None:
         self.conanfile.output.warning(f"Sanshain: {text}")
 
-    def _call(self, fn, *args, **kwargs):
+    def _call(self, fn: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
         """A client call; a strict failure is logged (after the call's own
         error, if it failed too) before it propagates, since Conan shows only
         the exception text."""
@@ -101,7 +107,7 @@ class Sanshain:
             self.conanfile.output.error(f"Sanshain: {e}")
             raise
 
-    def provide(self):
+    def provide(self) -> None:
         provides = []
         if self.config.provide:
             provides.append(self.config.provide)
@@ -113,7 +119,7 @@ class Sanshain:
 
         provided = False
 
-        def do_provide(file_path, api_type):
+        def do_provide(file_path: str, api_type: str | None) -> bool:
             full_path = os.path.join(self.base_path, file_path)
             if not os.path.exists(full_path):
                 if not self.config.best_effort:
@@ -122,12 +128,13 @@ class Sanshain:
                 self.conanfile.output.error(f"Sanshain: File not found at {full_path}")
                 return False
 
-            with open(full_path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
+            with open(full_path, encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
                 content = f.read()
 
             effective_type = api_type or "openapi"
             self.conanfile.output.info(
-                f"Sanshain: Providing {effective_type} {self.config.service_name} (stability: {self.stability})"
+                f"Sanshain: Providing {effective_type} {self.config.service_name} "
+                f"(stability: {self.stability})"
             )
 
             if effective_type == "openapi":
@@ -168,18 +175,18 @@ class Sanshain:
             self._report_harvest(response)
             return True
 
-        def do_retire(api_type):
+        def do_retire(api_type: str | None) -> bool:
             family = api_type or "openapi"
             self.conanfile.output.info(f"Sanshain: Retiring {family} for {self.config.service_name}")
             shed = self._call(self.client.retire, self.config.service_name, family) or {}
             self.conanfile.output.info(
-                "Sanshain: Retired — closed %d trunk pin(s), released %d contract(s); "
+                f"Sanshain: Retired — closed {shed.get('trunk_pins_closed', 0)} trunk pin(s), "
+                f"released {shed.get('contracts_released', 0)} contract(s); "
                 "history and existing pins are untouched"
-                % (shed.get("trunk_pins_closed", 0), shed.get("contracts_released", 0))
             )
             return True
 
-        def each(step, *step_args):
+        def each(step: Callable[..., bool], *step_args: Any) -> bool:
             # One provide or retire. Under bestEffort its failure is a warning
             # and the next entry still runs, as require() does per entry.
             try:
@@ -217,7 +224,7 @@ class Sanshain:
         if provided:
             self.conanfile.output.info("Sanshain: Successfully provided spec(s)")
 
-    def catalog(self):
+    def catalog(self) -> None:
         """Push the `catalogInfo` file (Backstage catalog-info.yaml) to Sanshain; needs Service 2.4.0.
 
         Without catalogInfo it warns and skips (strict: raises). A failed push
@@ -243,7 +250,7 @@ class Sanshain:
             output.warning(f"Sanshain: {e}")
             output.warning("Sanshain: Continuing (best effort)")
 
-    def _report_harvest(self, response):
+    def _report_harvest(self, response: object) -> None:
         # Surface the harvested AsyncAPI subscriptions, or the feature is
         # invisible: a subscription expecting a field no contract guarantees
         # would only be discovered later, on the GA provide the server
@@ -263,7 +270,7 @@ class Sanshain:
             else:
                 self.conanfile.output.info(f"Sanshain: subscription {line}")
 
-    def require(self):
+    def require(self) -> None:
         for req in self.config.requires:
             service_name = req["serviceName"]
             output_dir = req["outputDirectory"]

@@ -1,0 +1,56 @@
+# Accepted findings. The release and the weekly Security run (paxel/gates release-gate.yml)
+# fail on every open code-scanning alert, of any tool and severity, every open
+# secret-scanning alert, and every open SonarQube Cloud issue and hotspot to review that is not
+# listed here. Each entry says why the finding stays and
+# when the gate fails again: that is the review. Then fix it, or move the date with a reason.
+# Nothing is dismissed in GitHub or marked in SonarQube Cloud.
+#
+# # The three findings Scorecard has for every single-maintainer repository; the standard asks
+# for them here whether or not Scorecard reports them yet.
+[[IgnoredAlerts]]
+tool = "Scorecard"
+rule = "CodeReviewID"
+ignoreUntil = 2027-02-18
+reason = """Single maintainer: GitHub forbids approving one's own pull request, so no merge \
+can carry a second person's approval. Every change goes through a pull request with green CI."""
+
+[[IgnoredAlerts]]
+tool = "Scorecard"
+rule = "CIIBestPracticesID"
+ignoreUntil = 2027-02-18
+reason = """Single maintainer: the OpenSSF Best Practices badge is a self-certification \
+questionnaire; the practices it asks for are checked by the gates themselves."""
+
+[[IgnoredAlerts]]
+tool = "Scorecard"
+rule = "BranchProtectionID"
+ignoreUntil = 2027-02-18
+reason = """Single maintainer: the ruleset blocks deletion and force-pushes and requires a \
+pull request with green CI, but no approval, since nobody else can give one. Scorecard scores \
+the missing approvers and stale-review dismissal, so it stays below maximal."""
+
+# The three findings sonar-project.properties used to silence. Each is what the client is for:
+# it reads and writes the files the user names.
+[[IgnoredAlerts]]
+tool = "SonarQube Cloud"
+rule = "pythonsecurity:S8707"
+path = "sanshainconan/config.py"
+ignoreUntil = 2027-02-18
+reason = """A command-line tool reads the sanshain.yaml the user names with --config, and the \
+conanfile.py helper the one named by config_path; reading that file is the tool's purpose."""
+
+[[IgnoredAlerts]]
+tool = "SonarQube Cloud"
+rule = "pythonsecurity:S8707"
+path = "sanshainconan/cli.py"
+ignoreUntil = 2027-02-18
+reason = """The command reads the spec files and writes into the output directories that \
+sanshain.yaml names, relative to it; the file is the user's own."""
+
+[[IgnoredAlerts]]
+tool = "SonarQube Cloud"
+rule = "pythonsecurity:S8707"
+path = "sanshainconan/catalog.py"
+ignoreUntil = 2027-02-18
+reason = """The catalog step reads the catalogInfo file that sanshain.yaml names, relative to \
+it; the file is the user's own."""

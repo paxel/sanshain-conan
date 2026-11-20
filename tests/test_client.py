@@ -1,10 +1,13 @@
 import unittest
+from typing import Any
 from unittest import mock
 
 from sanshainconan.client import SanshainClient, SanshainError, VersionConflictError
 
 
-def make_response(status_code=200, json_data=None, text="", headers=None):
+def make_response(
+    status_code: int = 200, json_data: Any = None, text: str = "", headers: dict[str, str] | None = None
+) -> mock.Mock:
     resp = mock.Mock()
     resp.status_code = status_code
     resp.text = text
@@ -26,10 +29,12 @@ PROVIDE_OK = {
 
 class TestProvide(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_provide_payload_carries_stability_and_no_branch_era_fields(self, mock_post):
+    def test_provide_payload_carries_stability_and_no_branch_era_fields(
+        self, mock_post: mock.MagicMock
+    ) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
 
-        client = SanshainClient("http://localhost:8080", token="test-token")  # nosec B106
+        client = SanshainClient("http://localhost:8080", token="test-token")  # noqa: S106 - a made-up token for the header check
         res = client.provide("my-service", "openapi: 3.0.0", "snapshot")
 
         self.assertEqual(res["version"], "1.2.0")
@@ -45,7 +50,7 @@ class TestProvide(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
 
     @mock.patch("requests.post")
-    def test_provide_ga_stability(self, mock_post):
+    def test_provide_ga_stability(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
 
         client = SanshainClient("http://localhost:8080")
@@ -55,7 +60,7 @@ class TestProvide(unittest.TestCase):
         self.assertEqual(kwargs["json"]["stability"], "ga")
 
     @mock.patch("requests.post")
-    def test_provide_asyncapi_payload(self, mock_post):
+    def test_provide_asyncapi_payload(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
 
         client = SanshainClient("http://localhost:8080")
@@ -69,7 +74,7 @@ class TestProvide(unittest.TestCase):
         )
 
     @mock.patch("requests.post")
-    def test_provide_proto_payload(self, mock_post):
+    def test_provide_proto_payload(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(202, PROVIDE_OK)
 
         client = SanshainClient("http://localhost:8080")
@@ -84,8 +89,12 @@ class TestProvide(unittest.TestCase):
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_provide_409_surfaces_proposed_version(self, mock_post, mock_get):
-        mock_post.return_value = make_response(409, {"error": "GA 1.2.0 is immutable", "proposed_version": "1.3.0"})
+    def test_provide_409_surfaces_proposed_version(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
+        mock_post.return_value = make_response(
+            409, {"error": "GA 1.2.0 is immutable", "proposed_version": "1.3.0"}
+        )
 
         client = SanshainClient("http://localhost:8080")
         with self.assertRaises(VersionConflictError) as ctx:
@@ -100,7 +109,7 @@ class TestProvide(unittest.TestCase):
 
 class TestRequire(unittest.TestCase):
     @mock.patch("requests.get")
-    def test_require_sends_version_and_no_branch_era_params(self, mock_get):
+    def test_require_sends_version_and_no_branch_era_params(self, mock_get: mock.MagicMock) -> None:
         mock_get.return_value = make_response(200, text="openapi: 3.0.0", headers={"ETag": '"e1"'})
 
         client = SanshainClient("http://localhost:8080")
@@ -122,7 +131,7 @@ class TestRequire(unittest.TestCase):
         )
 
     @mock.patch("requests.post")
-    def test_require_bundle_sends_version(self, mock_post):
+    def test_require_bundle_sends_version(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(200, text="openapi: 3.0.0", headers={"ETag": '"e2"'})
 
         client = SanshainClient("http://localhost:8080")
@@ -145,7 +154,7 @@ class TestRequire(unittest.TestCase):
         self.assertNotIn("branch", kwargs["json"])
 
     @mock.patch("requests.get")
-    def test_require_etag_304_not_modified(self, mock_get):
+    def test_require_etag_304_not_modified(self, mock_get: mock.MagicMock) -> None:
         mock_get.return_value = make_response(304)
 
         client = SanshainClient("http://localhost:8080")
@@ -156,7 +165,7 @@ class TestRequire(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["If-None-Match"], '"e1"')
 
     @mock.patch("requests.get")
-    def test_require_404_unknown_version_message(self, mock_get):
+    def test_require_404_unknown_version_message(self, mock_get: mock.MagicMock) -> None:
         mock_get.side_effect = [
             make_response(404, {"error": "unknown version"}, text='{"error":"unknown version"}'),
             make_response(200, {"version": "2.0.0"}),  # lazy /version probe: server is fine
@@ -172,7 +181,7 @@ class TestRequire(unittest.TestCase):
         self.assertIn("GET /producers/producer/versions", msg)
 
     @mock.patch("requests.get")
-    def test_require_410_absent_message_is_distinct(self, mock_get):
+    def test_require_410_absent_message_is_distinct(self, mock_get: mock.MagicMock) -> None:
         mock_get.side_effect = [
             make_response(410, {"error": "endpoint absent"}, text='{"error":"endpoint absent"}'),
             make_response(200, {"version": "2.0.0"}),
@@ -191,7 +200,9 @@ class TestRequire(unittest.TestCase):
 class TestWrongServerDiagnosis(unittest.TestCase):
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_pre_2_server_replaces_confusing_error(self, mock_post, mock_get):
+    def test_pre_2_server_replaces_confusing_error(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         mock_post.return_value = make_response(422, text="Unknown field: stability")
         mock_get.return_value = make_response(200, {"version": "1.7.2"})
 
@@ -207,7 +218,9 @@ class TestWrongServerDiagnosis(unittest.TestCase):
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_2x_server_keeps_original_error(self, mock_post, mock_get):
+    def test_2x_server_keeps_original_error(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         mock_post.return_value = make_response(422, text="wrong shape")
         mock_get.return_value = make_response(200, {"version": "2.1.0"})
 
@@ -220,7 +233,9 @@ class TestWrongServerDiagnosis(unittest.TestCase):
 
     @mock.patch("requests.get")
     @mock.patch("requests.post")
-    def test_unreachable_version_endpoint_keeps_original_error(self, mock_post, mock_get):
+    def test_unreachable_version_endpoint_keeps_original_error(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock
+    ) -> None:
         mock_post.return_value = make_response(500, text="boom")
         mock_get.return_value = make_response(404)
 
@@ -230,10 +245,36 @@ class TestWrongServerDiagnosis(unittest.TestCase):
 
         self.assertIn("500", str(ctx.exception))
 
+    @mock.patch("requests.put")
+    @mock.patch("requests.get")
+    @mock.patch("requests.post")
+    def test_an_answer_nested_deeper_than_python_follows_is_read_as_no_json(
+        self, mock_post: mock.MagicMock, mock_get: mock.MagicMock, mock_put: mock.MagicMock
+    ) -> None:
+        def nested(status_code: int) -> mock.Mock:
+            resp = make_response(status_code, text="[[[[")
+            resp.json.side_effect = RecursionError("maximum recursion depth exceeded")
+            return resp
+
+        client = SanshainClient("http://localhost:8080")
+        mock_get.return_value = nested(200)
+        self.assertIsNone(client.get_server_version())
+
+        mock_post.return_value = nested(500)
+        with self.assertRaises(SanshainError) as ctx:
+            client.provide("my-service", "openapi: 3.0.0", "snapshot")
+        self.assertEqual(str(ctx.exception), "Request failed with status 500: [[[[")
+
+        mock_post.return_value = nested(202)
+        self.assertIsNone(client.provide("my-service", "openapi: 3.0.0", "snapshot"))
+
+        mock_put.return_value = nested(200)
+        self.assertEqual(client.push_catalog("my-service", "kind: Component"), {})
+
 
 class TestGrpcRequire(unittest.TestCase):
     @mock.patch("requests.get")
-    def test_single_endpoint_goes_to_the_grpc_route(self, mock_get):
+    def test_single_endpoint_goes_to_the_grpc_route(self, mock_get: mock.MagicMock) -> None:
         mock_get.return_value = make_response(200, text='syntax = "proto3";')
 
         SanshainClient("http://localhost:8080").require(
@@ -244,9 +285,12 @@ class TestGrpcRequire(unittest.TestCase):
         self.assertEqual(args[0], "http://localhost:8080/require/grpc")
 
     @mock.patch("requests.post")
-    def test_bundle_sends_grpc_as_proto(self, mock_post):
+    def test_bundle_sends_grpc_as_proto(self, mock_post: mock.MagicMock) -> None:
         mock_post.return_value = make_response(200, text='syntax = "proto3";')
-        endpoints = [{"path": "pay.Payments/Charge", "method": "RPC"}, {"path": "pay.Payments/Refund", "method": "RPC"}]
+        endpoints = [
+            {"path": "pay.Payments/Charge", "method": "RPC"},
+            {"path": "pay.Payments/Refund", "method": "RPC"},
+        ]
 
         SanshainClient("http://localhost:8080").require_bundle("consumer", "pay", "1.0.0", endpoints, "grpc")
 

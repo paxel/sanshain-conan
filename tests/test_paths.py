@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -15,14 +16,14 @@ from sanshainconan.cli import main
 from sanshainconan.integration import Sanshain
 
 
-def write_config(folder, data):
+def write_config(folder: str, data: dict[str, Any]) -> str:
     path = os.path.join(folder, "sanshain.yaml")
     with open(path, "w") as f:
         yaml.dump(data, f)
     return path
 
 
-def fake_conanfile(folder):
+def fake_conanfile(folder: str) -> SimpleNamespace:
     return SimpleNamespace(
         export_sources_folder=folder,
         recipe_folder=folder,
@@ -32,7 +33,7 @@ def fake_conanfile(folder):
 
 
 class PathsTestCase(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         # Three unrelated folders: the config lives in one, the recipe in
         # another and the process runs in a third.
         self.config_dir = tempfile.mkdtemp()
@@ -59,12 +60,12 @@ class PathsTestCase(unittest.TestCase):
             },
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         os.chdir(self.cwd)
         for d in (self.config_dir, self.recipe_dir, self.work_dir):
             shutil.rmtree(d)
 
-    def client(self):
+    def client(self) -> mock.Mock:
         client = mock.Mock()
         client.provide.return_value = {"version": "1.2.0", "stability": "snapshot", "changes": {}}
         client.require.return_value = {
@@ -77,7 +78,7 @@ class PathsTestCase(unittest.TestCase):
 
 
 class TestCliPaths(PathsTestCase):
-    def _run(self, command, client):
+    def _run(self, command: str, client: mock.Mock) -> None:
         argv = ["sanshain-conan", "--config", self.config_file, command]
         with mock.patch.dict(os.environ, {}, clear=True):
             with mock.patch("sanshainconan.cli.SanshainClient", return_value=client):
@@ -85,18 +86,18 @@ class TestCliPaths(PathsTestCase):
                     with contextlib.redirect_stdout(io.StringIO()):
                         main()
 
-    def test_provide_reads_the_spec_next_to_the_config(self):
+    def test_provide_reads_the_spec_next_to_the_config(self) -> None:
         client = self.client()
         self._run("provide", client)
         args, _ = client.provide.call_args
         self.assertIn("version: 1.2.0", args[1])
 
-    def test_require_writes_next_to_the_config(self):
+    def test_require_writes_next_to_the_config(self) -> None:
         self._run("require", self.client())
         self.assertTrue(os.path.exists(os.path.join(self.config_dir, "gen", "other-service.yaml")))
         self.assertFalse(os.path.exists(os.path.join(self.work_dir, "gen")))
 
-    def test_absolute_paths_stay_absolute(self):
+    def test_absolute_paths_stay_absolute(self) -> None:
         elsewhere = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, elsewhere)
         with open(os.path.join(elsewhere, "abs.yaml"), "w") as f:
@@ -126,33 +127,33 @@ class TestCliPaths(PathsTestCase):
 
 
 class TestHelperPaths(PathsTestCase):
-    def _helper(self):
+    def _helper(self) -> Any:  # the helper, its client replaced by a mock
         with mock.patch.dict(os.environ, {}, clear=True):
             sanshain = Sanshain(fake_conanfile(self.recipe_dir), config_path=self.config_file)
         sanshain.client = self.client()
         return sanshain
 
-    def test_provide_reads_the_spec_next_to_the_config(self):
+    def test_provide_reads_the_spec_next_to_the_config(self) -> None:
         sanshain = self._helper()
         sanshain.provide()
         args, _ = sanshain.client.provide.call_args
         self.assertIn("version: 1.2.0", args[1])
 
-    def test_require_writes_next_to_the_config(self):
+    def test_require_writes_next_to_the_config(self) -> None:
         sanshain = self._helper()
         sanshain.require()
         self.assertTrue(os.path.exists(os.path.join(self.config_dir, "gen", "other-service.yaml")))
         self.assertFalse(os.path.exists(os.path.join(self.recipe_dir, "gen")))
         self.assertFalse(os.path.exists(os.path.join(self.work_dir, "gen")))
 
-    def test_default_config_is_found_in_the_project_root(self):
+    def test_default_config_is_found_in_the_project_root(self) -> None:
         # Without config_path the helper loads <export_sources_folder>/sanshain.yaml
         # and resolves against that same folder.
         with mock.patch.dict(os.environ, {}, clear=True):
             sanshain = Sanshain(fake_conanfile(self.config_dir))
         self.assertEqual(sanshain.base_path, os.path.abspath(self.config_dir))
 
-    def test_without_export_sources_and_recipe_folder_the_source_folder_is_the_root(self):
+    def test_without_export_sources_and_recipe_folder_the_source_folder_is_the_root(self) -> None:
         # The attributes of a Conan 2 ConanFile: there is no base_folder.
         conanfile = SimpleNamespace(
             export_sources_folder=None, recipe_folder=None, source_folder=self.config_dir, output=mock.Mock()

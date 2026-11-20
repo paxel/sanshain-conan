@@ -7,10 +7,10 @@ PROVIDE_OK = {"version": "1.2.0", "stability": "snapshot", "content_hash": "sha2
 
 
 class TestResolveOrigin(unittest.TestCase):
-    def test_nothing_known_is_empty(self):
+    def test_nothing_known_is_empty(self) -> None:
         self.assertEqual(resolve_origin(env={}), {})
 
-    def test_explicit_beats_environment_beats_runner(self):
+    def test_explicit_beats_environment_beats_runner(self) -> None:
         env = {
             "SANSHAIN_BUILD_URL": "https://ci/env",
             "SANSHAIN_CHANGE_URL": "https://git/env",
@@ -20,14 +20,24 @@ class TestResolveOrigin(unittest.TestCase):
         }
         self.assertEqual(
             resolve_origin(" https://ci/opt ", "https://git/opt", "A-1, A-2 ,A-1,", " opt ", env=env),
-            {"build_url": "https://ci/opt", "change_url": "https://git/opt", "tickets": ["A-1", "A-2"], "note": "opt"},
+            {
+                "build_url": "https://ci/opt",
+                "change_url": "https://git/opt",
+                "tickets": ["A-1", "A-2"],
+                "note": "opt",
+            },
         )
         self.assertEqual(
             resolve_origin(env=env),
-            {"build_url": "https://ci/env", "change_url": "https://git/env", "tickets": ["ENV-1"], "note": "env"},
+            {
+                "build_url": "https://ci/env",
+                "change_url": "https://git/env",
+                "tickets": ["ENV-1"],
+                "note": "env",
+            },
         )
 
-    def test_runners(self):
+    def test_runners(self) -> None:
         self.assertEqual(
             resolve_origin(
                 env={
@@ -56,7 +66,9 @@ class TestResolveOrigin(unittest.TestCase):
             },
         )
         self.assertEqual(
-            resolve_origin(env={"BUILD_URL": "https://jenkins/job/7/", "CHANGE_URL": "https://bitbucket/pr/5"}),
+            resolve_origin(
+                env={"BUILD_URL": "https://jenkins/job/7/", "CHANGE_URL": "https://bitbucket/pr/5"}
+            ),
             {"build_url": "https://jenkins/job/7/", "change_url": "https://bitbucket/pr/5"},
         )
         self.assertEqual(
@@ -73,7 +85,7 @@ class TestResolveOrigin(unittest.TestCase):
 
 class TestProvideCarriesOrigin(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_every_provide_merges_the_origin(self, mock_post):
+    def test_every_provide_merges_the_origin(self, mock_post: mock.MagicMock) -> None:
         resp = mock.Mock(status_code=202, text="", headers={})
         resp.json.return_value = PROVIDE_OK
         mock_post.return_value = resp
@@ -89,7 +101,7 @@ class TestProvideCarriesOrigin(unittest.TestCase):
 
 class TestOldServerRefusingTheOrigin(unittest.TestCase):
     @mock.patch("requests.post")
-    def test_repeats_the_provide_without_the_origin(self, mock_post):
+    def test_repeats_the_provide_without_the_origin(self, mock_post: mock.MagicMock) -> None:
         refused = mock.Mock(status_code=422, headers={})
         refused.text = "Failed to deserialize the JSON body into the target type: unknown field `note`"
         ok = mock.Mock(status_code=202, text="", headers={})

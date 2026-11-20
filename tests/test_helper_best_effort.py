@@ -30,11 +30,11 @@ CONAN_OUTPUT = [
 
 
 class TestHelperRequireBestEffort(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.folder)
 
-    def _helper(self, best_effort):
+    def _helper(self, best_effort: bool) -> Sanshain:
         with open(os.path.join(self.folder, "sanshain.yaml"), "w") as f:
             yaml.dump(
                 {
@@ -64,7 +64,7 @@ class TestHelperRequireBestEffort(unittest.TestCase):
         sanshain.client.require.side_effect = SanshainError("Request failed with status 503: down")
         return sanshain
 
-    def test_best_effort_warns_and_continues(self):
+    def test_best_effort_warns_and_continues(self) -> None:
         sanshain = self._helper(best_effort=True)
         sanshain.require()
         output = sanshain.conanfile.output
@@ -73,7 +73,7 @@ class TestHelperRequireBestEffort(unittest.TestCase):
         )
         output.warning.assert_called_once_with("Sanshain: Continuing (best effort)")
 
-    def test_without_best_effort_the_error_is_raised(self):
+    def test_without_best_effort_the_error_is_raised(self) -> None:
         sanshain = self._helper(best_effort=False)
         with self.assertRaises(SanshainError):
             sanshain.require()

@@ -11,8 +11,8 @@ from unittest import mock
 
 import yaml
 
-from sanshainconan.cli import main, resolve_stability
-from sanshainconan.client import resolve_stream
+from sanshainconan.cli import main
+from sanshainconan.client import resolve_stability, resolve_stream
 from sanshainconan.config import SanshainConfig, env_flag
 from sanshainconan.integration import Sanshain
 
@@ -21,33 +21,36 @@ OFF = ["yes", "false", "0", "", "on", "truee"]
 
 
 class TestEnvFlag(unittest.TestCase):
-    def test_true_and_1_are_on_trimmed_and_case_insensitive(self):
+    def test_true_and_1_are_on_trimmed_and_case_insensitive(self) -> None:
         for value in ON:
             with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_X": value}, clear=True):
                 self.assertTrue(env_flag("SANSHAIN_X"))
 
-    def test_anything_else_is_off(self):
+    def test_anything_else_is_off(self) -> None:
         for value in OFF:
             with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_X": value}, clear=True):
                 self.assertFalse(env_flag("SANSHAIN_X"))
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertFalse(env_flag("SANSHAIN_X"))
 
-    def test_ga_switch(self):
+    def test_ga_switch(self) -> None:
         for value in ("1", "TRUE", " true "):
             with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_GA": value}, clear=True):
                 self.assertEqual(resolve_stability(), "ga")
         with mock.patch.dict(os.environ, {"SANSHAIN_GA": "yes"}, clear=True):
             self.assertEqual(resolve_stability(), "snapshot")
 
-    def test_trunk_switch(self):
+    def test_trunk_switch(self) -> None:
         for value in ("1", "TRUE", " true "):
-            with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_TRUNK": value}, clear=True):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {"SANSHAIN_TRUNK": value}, clear=True),
+            ):
                 self.assertEqual(resolve_stream(), (True, None))
         with mock.patch.dict(os.environ, {"SANSHAIN_TRUNK": "yes"}, clear=True):
             self.assertEqual(resolve_stream(), (False, None))
 
-    def test_helper_ga_switch(self):
+    def test_helper_ga_switch(self) -> None:
         folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, folder)
         with open(os.path.join(folder, "sanshain.yaml"), "w") as f:
@@ -61,18 +64,23 @@ class TestEnvFlag(unittest.TestCase):
 
 
 class TestBestEffortSwitch(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.folder = tempfile.mkdtemp()
         self.config_file = os.path.join(self.folder, "sanshain.yaml")
         with open(self.config_file, "w") as f:
             yaml.dump(
-                {"sanshainUrl": "http://localhost:8080", "serviceName": "svc", "provide": {"file": "missing.yaml"}}, f
+                {
+                    "sanshainUrl": "http://localhost:8080",
+                    "serviceName": "svc",
+                    "provide": {"file": "missing.yaml"},
+                },
+                f,
             )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.folder)
 
-    def _run(self, value):
+    def _run(self, value: str) -> None:
         argv = ["sanshain-conan", "--config", self.config_file, "provide"]
         with mock.patch.dict(os.environ, {"SANSHAIN_BEST_EFFORT": value}, clear=True):
             with mock.patch("sanshainconan.cli.SanshainClient", return_value=mock.Mock()):
@@ -80,35 +88,35 @@ class TestBestEffortSwitch(unittest.TestCase):
                     with contextlib.redirect_stdout(io.StringIO()):
                         main()
 
-    def test_on_values_continue(self):
+    def test_on_values_continue(self) -> None:
         for value in ("1", "TRUE", " true "):
             with self.subTest(value=value):
                 self._run(value)  # no SystemExit
 
-    def test_yes_is_off(self):
+    def test_yes_is_off(self) -> None:
         with self.assertRaises(SystemExit) as ctx:
             self._run("yes")
         self.assertEqual(ctx.exception.code, 1)
 
 
 class TestSanshainUrl(unittest.TestCase):
-    def test_env_beats_yaml(self):
+    def test_env_beats_yaml(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_URL": "https://env.example"}, clear=True):
             config = SanshainConfig({"sanshainUrl": "https://yaml.example"})
         self.assertEqual(config.sanshain_url, "https://env.example")
 
-    def test_yaml_is_the_fallback(self):
+    def test_yaml_is_the_fallback(self) -> None:
         for env in ({}, {"SANSHAIN_URL": "  "}):
             with self.subTest(env=env), mock.patch.dict(os.environ, env, clear=True):
                 config = SanshainConfig({"sanshainUrl": "https://yaml.example"})
             self.assertEqual(config.sanshain_url, "https://yaml.example")
 
-    def test_env_alone_is_enough(self):
+    def test_env_alone_is_enough(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_URL": " https://env.example "}, clear=True):
             config = SanshainConfig({"serviceName": "svc"})
         self.assertEqual(config.sanshain_url, "https://env.example")
 
-    def test_cli_client_gets_the_env_url(self):
+    def test_cli_client_gets_the_env_url(self) -> None:
         folder = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, folder)
         config_file = os.path.join(folder, "sanshain.yaml")

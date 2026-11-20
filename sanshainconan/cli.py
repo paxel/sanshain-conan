@@ -1,6 +1,8 @@
 import argparse
 import os
 import sys
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from .annotations import fill_annotations, parse_set
 from .cache import SanshainCache
@@ -15,10 +17,10 @@ from .client import (
     resolve_stream,
     stream_declared,
 )
-from .config import ConfigError, env_flag, load_config, puzzled_cat
+from .config import ConfigError, SanshainConfig, env_flag, load_config, puzzled_cat
 
 
-def format_version_conflict(error, spec_file, api_type):
+def format_version_conflict(error: VersionConflictError, spec_file: str, api_type: str | None) -> str:
     if api_type in ("proto", "grpc"):
         slot = "the // sanshain-version: marker"
     else:
@@ -29,27 +31,31 @@ def format_version_conflict(error, spec_file, api_type):
     )
 
 
-def etag_for(cache, key, output_file):
+def etag_for(cache: SanshainCache, key: str, output_file: str) -> str | None:
     """The ETag to send as If-None-Match: none when the output file is gone,
     so the answer is a 200 that writes it again instead of a 304 that leaves it
-    missing."""
+    missing. None as well when the state file holds something else than an
+    ETag for the require: it is fetched again."""
     entry = cache.get_require_entry(key) if os.path.exists(output_file) else None
-    return entry.get("etag") if entry else None
+    etag = entry.get("etag") if isinstance(entry, dict) else None
+    return etag if isinstance(etag, str) else None
 
 
-def warn(text):
+def warn(text: str) -> None:
     print(f"⚠ {text}")
 
 
-def set_argument(arg):
+def set_argument(arg: str) -> tuple[str, str]:
     """argparse type of `--set NAME=value`."""
     try:
         return parse_set(arg)
     except ValueError as e:
-        raise argparse.ArgumentTypeError(str(e))
+        raise argparse.ArgumentTypeError(str(e)) from e
 
 
-def resolve_annotations(config, sets, strict):
+def resolve_annotations(
+    config: SanshainConfig, sets: Iterable[tuple[str, str]] | None, strict: bool
+) -> list[dict[str, str]]:
     """The annotations of sanshain.yaml with their placeholders filled from
     --set and SANSHAIN_SET_*. Every entry left out is a warning; under strict
     the first fails the command before any request, also with best effort."""
@@ -61,14 +67,15 @@ def resolve_annotations(config, sets, strict):
     return annotations
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Sanshain Conan CLI")
     parser.add_argument("--config", default="sanshain.yaml", help="Path to sanshain.yaml")
     parser.add_argument("--insecure", action="store_true", help="Allow insecure SSL connections")
     parser.add_argument(
         "--ga",
         action="store_true",
-        help="Provide as ga (immutable release); default is snapshot, or ga on a trunk or tag build with autoGa",
+        help="Provide as ga (immutable release); default is snapshot, "
+        "or ga on a trunk or tag build with autoGa",
     )
     parser.add_argument(
         "--trunk",
@@ -84,7 +91,8 @@ def main():
         "--best-effort",
         action="store_true",
         help="turn failed calls, and a missing or broken sanshain.yaml, into warnings and exit 0 "
-        "(also SANSHAIN_BEST_EFFORT=true or 1; bestEffort: true in sanshain.yaml counts for failed calls only)",
+        "(also SANSHAIN_BEST_EFFORT=true or 1; "
+        "bestEffort: true in sanshain.yaml counts for failed calls only)",
     )
     parser.add_argument(
         "--build-url",
@@ -94,18 +102,22 @@ def main():
     parser.add_argument(
         "--change-url",
         default=None,
-        help="the pull or merge request behind this build (SANSHAIN_CHANGE_URL; default: the runner's variable)",
+        help="the pull or merge request behind this build "
+        "(SANSHAIN_CHANGE_URL; default: the runner's variable)",
     )
     parser.add_argument(
         "--tickets", default=None, help="ticket ids this build closes, comma-separated (SANSHAIN_TICKETS)"
     )
-    parser.add_argument("--note", default=None, help="one line of intent for this provide (also SANSHAIN_NOTE)")
+    parser.add_argument(
+        "--note", default=None, help="one line of intent for this provide (also SANSHAIN_NOTE)"
+    )
     parser.add_argument(
         "--set",
         action="append",
         type=set_argument,
         metavar="NAME=value",
-        help="fill the {{NAME}} placeholders of the annotations in sanshain.yaml; repeatable (also SANSHAIN_SET_NAME)",
+        help="fill the {{NAME}} placeholders of the annotations in sanshain.yaml; "
+        "repeatable (also SANSHAIN_SET_NAME)",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -113,7 +125,8 @@ def main():
     subparsers.add_parser("provide", help="Upload local spec to Sanshain")
     subparsers.add_parser("require", help="Download required specs from Sanshain")
     subparsers.add_parser(
-        "catalog", help="Push the catalogInfo file (Backstage catalog-info.yaml) to Sanshain (needs Service 2.4.0)"
+        "catalog",
+        help="Push the catalogInfo file (Backstage catalog-info.yaml) to Sanshain (needs Service 2.4.0)",
     )
 
     args = parser.parse_args()
@@ -123,7 +136,8 @@ def main():
         sys.exit(1)
 
     try:
-        config = None
+        # The loaded configuration, for the handler at the end; None until sanshain.yaml is read.
+        loaded: SanshainConfig | None = None
         # A missing or broken sanshain.yaml cannot be trusted to say bestEffort,
         # so only the flag and SANSHAIN_BEST_EFFORT decide for it: best effort
         # prints the error, calls nothing and exits 0. Strict is read from the
@@ -131,7 +145,7 @@ def main():
         # strict of a file that otherwise loads always fail.
         outside_best_effort = args.best_effort or env_flag("SANSHAIN_BEST_EFFORT")
         try:
-            config = load_config(args.config, best_effort=outside_best_effort)
+            config = loaded = load_config(args.config, best_effort=outside_best_effort)
         except Exception as e:
             # The cat comes first, also when the config then fails.
             if isinstance(e, ConfigError) and e.unknown_fields:
@@ -205,7 +219,7 @@ def main():
             stability = resolve_stability(args.ga, config.auto_ga, stream_declared(args.trunk, args.tag))
             provided = False
 
-            def each(step, *step_args):
+            def each(step: Callable[..., bool], *step_args: Any) -> bool:
                 # One provide or retire. Under best effort its failure is a
                 # warning and the next entry still runs, as require does per entry.
                 try:
@@ -219,7 +233,7 @@ def main():
                     print("Continuing (best effort)")
                     return False
 
-            def do_provide_file(file_path, api_type):
+            def do_provide_file(file_path: str, api_type: str | None) -> bool:
                 full_path = os.path.join(config_dir, file_path)
                 if not os.path.exists(full_path):
                     print(f"File not found: {full_path}")
@@ -227,7 +241,7 @@ def main():
                         raise SanshainError(f"File not found: {full_path}")
                     return False
 
-                with open(full_path, "r", encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
+                with open(full_path, encoding="utf-8-sig") as f:  # UTF-8, BOM stripped
                     content = f.read()
                 effective_type = api_type or "openapi"
 
@@ -299,7 +313,7 @@ def main():
                         print(f"{marker} subscription {line}")
                 return True
 
-            def do_retire(api_type):
+            def do_retire(api_type: str | None) -> bool:
                 family = api_type or "openapi"
                 print(f"Retiring {family} for {config.service_name}...")
                 try:
@@ -344,7 +358,10 @@ def main():
                 if strict:
                     print("No specification files found to provide.")
                     sys.exit(1)
-                print("⚠ No specification files found to provide. Skipping. Set strict: true to fail in this case.")
+                print(
+                    "⚠ No specification files found to provide. Skipping. "
+                    "Set strict: true to fail in this case."
+                )
             else:
                 print("Successfully provided.")
 
@@ -360,7 +377,10 @@ def main():
                 if strict:
                     print("No requires configured in sanshain.yaml")
                     sys.exit(1)
-                print("⚠ No requires configured in sanshain.yaml. Skipping. Set strict: true to fail in this case.")
+                print(
+                    "⚠ No requires configured in sanshain.yaml. Skipping. "
+                    "Set strict: true to fail in this case."
+                )
                 return
 
             cache = SanshainCache()
@@ -453,7 +473,7 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
-        if config is None or not config.best_effort:
+        if loaded is None or not loaded.best_effort:
             sys.exit(1)
         print("Continuing (best effort)")
 

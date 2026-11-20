@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -17,7 +18,7 @@ from sanshainconan.config import ConfigError, SanshainConfig, find_unknown_field
 from sanshainconan.integration import Sanshain
 
 
-def make_response(status_code=202, json_data=None):
+def make_response(status_code: int = 202, json_data: Any = None) -> mock.Mock:
     resp = mock.Mock()
     resp.status_code = status_code
     resp.text = ""
@@ -40,16 +41,20 @@ TABLE = [
 
 
 class Project(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.dir = tempfile.mkdtemp()
         with open(os.path.join(self.dir, "api.yaml"), "w") as f:
             f.write("openapi: 3.0.0\ninfo:\n  version: 1.0.0\n")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self.dir)
 
-    def write_config(self, auto_ga, **extra):
-        config = {"sanshainUrl": "http://localhost:8080", "serviceName": "svc", "provide": {"file": "api.yaml"}}
+    def write_config(self, auto_ga: bool | None, **extra: Any) -> None:
+        config: dict[str, Any] = {
+            "sanshainUrl": "http://localhost:8080",
+            "serviceName": "svc",
+            "provide": {"file": "api.yaml"},
+        }
         if auto_ga is not None:
             config["autoGa"] = auto_ga
         config.update(extra)
@@ -59,7 +64,7 @@ class Project(unittest.TestCase):
 
 
 class TestResolveStability(unittest.TestCase):
-    def test_the_table(self):
+    def test_the_table(self) -> None:
         for auto_ga, stream, ga_flag, env_ga, expected in TABLE:
             env = {} if env_ga is None else {"SANSHAIN_GA": env_ga}
             with self.subTest(auto_ga=auto_ga, stream=stream, ga=ga_flag, env=env_ga):
@@ -67,18 +72,18 @@ class TestResolveStability(unittest.TestCase):
                     declared = stream_declared("--trunk" in stream, stream[1] if "--tag" in stream else None)
                     self.assertEqual(resolve_stability(ga_flag, auto_ga is True, declared), expected)
 
-    def test_blank_sanshain_ga_is_unset(self):
+    def test_blank_sanshain_ga_is_unset(self) -> None:
         for value in ("", "  "):
             with self.subTest(value=value), mock.patch.dict(os.environ, {"SANSHAIN_GA": value}, clear=True):
                 self.assertEqual(resolve_stability(False, True, True), "ga")
 
-    def test_any_other_sanshain_ga_value_is_set_and_off(self):
+    def test_any_other_sanshain_ga_value_is_set_and_off(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_GA": "yes"}, clear=True):
             self.assertEqual(resolve_stability(False, True, True), "snapshot")
 
 
 class TestStreamDeclared(unittest.TestCase):
-    def test_flags_and_environment(self):
+    def test_flags_and_environment(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertFalse(stream_declared())
             self.assertFalse(stream_declared(False, "  "))
@@ -89,13 +94,13 @@ class TestStreamDeclared(unittest.TestCase):
         with mock.patch.dict(os.environ, {"SANSHAIN_TAG": "release-1"}, clear=True):
             self.assertTrue(stream_declared())
 
-    def test_trunk_and_tag_together_still_declare_a_stream(self):
+    def test_trunk_and_tag_together_still_declare_a_stream(self) -> None:
         with mock.patch.dict(os.environ, {"SANSHAIN_TAG": "release-1"}, clear=True):
             self.assertTrue(stream_declared(True))
 
 
 class TestCliAutoGa(Project):
-    def run_provide(self, *extra, env=None):
+    def run_provide(self, *extra: str, env: dict[str, str] | None = None) -> str:
         argv = ["sanshain-conan", "--config", self.config_file, *extra, "provide"]
         out = io.StringIO()
         with mock.patch.dict(os.environ, env or {}, clear=True):
@@ -105,7 +110,7 @@ class TestCliAutoGa(Project):
         self.mock_post = mock_post
         return out.getvalue()
 
-    def test_the_table_on_the_wire(self):
+    def test_the_table_on_the_wire(self) -> None:
         for auto_ga, stream, ga_flag, env_ga, expected in TABLE:
             with self.subTest(auto_ga=auto_ga, stream=stream, ga=ga_flag, env=env_ga):
                 self.write_config(auto_ga)
@@ -115,14 +120,14 @@ class TestCliAutoGa(Project):
                 self.assertEqual(self.mock_post.call_args[1]["json"]["stability"], expected)
                 self.assertIn(f"(stability: {expected})", out)
 
-    def test_the_stream_from_the_environment_counts(self):
+    def test_the_stream_from_the_environment_counts(self) -> None:
         self.write_config(True)
         for env in ({"SANSHAIN_TRUNK": "true"}, {"SANSHAIN_TAG": "release-1"}):
             with self.subTest(env=env):
                 self.run_provide(env=env)
                 self.assertEqual(self.mock_post.call_args[1]["json"]["stability"], "ga")
 
-    def test_trunk_and_tag_together_make_ga_and_send_neither(self):
+    def test_trunk_and_tag_together_make_ga_and_send_neither(self) -> None:
         self.write_config(True)
         self.run_provide("--trunk", "--tag", "release-1")
         payload = self.mock_post.call_args[1]["json"]
@@ -130,7 +135,7 @@ class TestCliAutoGa(Project):
         self.assertNotIn("trunk", payload)
         self.assertNotIn("tag", payload)
 
-    def test_retire_with_auto_ga_on_trunk_sends_no_stability(self):
+    def test_retire_with_auto_ga_on_trunk_sends_no_stability(self) -> None:
         self.write_config(True, provide={"apiType": "asyncapi", "retired": True})
         self.run_provide("--trunk")
         self.mock_post.assert_called_once()
@@ -139,14 +144,14 @@ class TestCliAutoGa(Project):
 
 
 class TestHelperAutoGa(Project):
-    def helper(self, env):
+    def helper(self, env: dict[str, str]) -> Sanshain:
         conanfile = SimpleNamespace(
             export_sources_folder=self.dir, recipe_folder=self.dir, source_folder=self.dir, output=mock.Mock()
         )
         with mock.patch.dict(os.environ, env, clear=True):
             return Sanshain(conanfile)
 
-    def test_the_environment_rows(self):
+    def test_the_environment_rows(self) -> None:
         rows = [
             (True, {"SANSHAIN_TRUNK": "true"}, "ga"),
             (True, {"SANSHAIN_TAG": "release-1"}, "ga"),
@@ -160,7 +165,7 @@ class TestHelperAutoGa(Project):
                 self.write_config(auto_ga)
                 self.assertEqual(self.helper(env).stability, expected)
 
-    def test_retire_with_auto_ga_on_trunk_sends_no_stability(self):
+    def test_retire_with_auto_ga_on_trunk_sends_no_stability(self) -> None:
         self.write_config(True, provide={"apiType": "openapi", "retired": True})
         sanshain = self.helper({"SANSHAIN_TRUNK": "true"})
         self.assertEqual(sanshain.stability, "ga")
@@ -171,16 +176,16 @@ class TestHelperAutoGa(Project):
 
 
 class TestAutoGaConfig(unittest.TestCase):
-    def test_is_a_known_field(self):
+    def test_is_a_known_field(self) -> None:
         self.assertEqual(find_unknown_fields({"sanshainUrl": "x", "autoGa": True}), [])
 
-    def test_defaults_to_off(self):
+    def test_defaults_to_off(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertFalse(SanshainConfig({"sanshainUrl": "x"}).auto_ga)
             self.assertFalse(SanshainConfig({"sanshainUrl": "x", "autoGa": None}).auto_ga)
             self.assertTrue(SanshainConfig({"sanshainUrl": "x", "autoGa": True}).auto_ga)
 
-    def test_a_value_other_than_true_or_false_is_an_error(self):
+    def test_a_value_other_than_true_or_false_is_an_error(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ConfigError) as ctx:
                 SanshainConfig({"sanshainUrl": "x", "autoGa": "yes"})

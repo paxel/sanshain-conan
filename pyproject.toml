@@ -30,7 +30,7 @@ exclude = ["/fuzz"]
 [dependency-groups]
 # The tools that check the package: the commands of the shared Python gate.
 dev = [
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "mypy==2.4.1",
     "pytest==9.2.0",
     "pytest-cov==7.1.0",
